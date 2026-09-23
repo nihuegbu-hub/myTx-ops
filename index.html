@@ -936,7 +936,8 @@ function HomeView({setView}){
 
 
 /* ── GANTT V2 ── */
-function GanttChart2({mode, onMsClick, selMs}){
+function GanttChart2({mode, selProg="both", onMsClick, selMs}){
+  const activePids=selProg==="both"?["p1","p2"]:[selProg];
   const [pastX, setPastX]=React.useState(false);
   const [futX,  setFutX ]=React.useState(false);
   const [tip,   setTip  ]=React.useState(null);
@@ -1522,7 +1523,7 @@ function ProgramsView(){
     {/* Gantt */}
     <div className="card" style={{padding:0,overflow:"hidden",marginBottom:4}}>
       <div style={{padding:"12px 16px 0"}}>
-        <GanttChart2 mode={mode} onMsClick={setSelMs} selMs={selMs}/>
+        <GanttChart2 mode={mode} selProg={selProg} onMsClick={setSelMs} selMs={selMs}/>
       </div>
       <div style={{display:"flex",gap:16,padding:"6px 16px 8px",borderTop:"1px solid var(--border)",
         fontSize:10,color:"var(--t3)",marginTop:8,flexWrap:"wrap"}}>
