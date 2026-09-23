@@ -2259,7 +2259,7 @@ function CapitalView(){
               border:`1.5px solid ${on?s.color:"var(--border)"}`,
               background:on?s.bg:"var(--surface)",
               color:on?s.color:"var(--t3)",transition:"all .15s",
-            }}>{p.code}</button>;
+            }}>{`YEM-${String(parseInt(p.id.replace(/\D/g,""),10)).padStart(3,"0")}`}</button>;
           })}
         </div>
       </div>
