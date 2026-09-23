@@ -978,7 +978,7 @@ function GanttChart2({mode, onMsClick, selMs}){
   /* ── build row list ── */
   const MODE_INVESTOR=mode==="investor";
   const allRows=[];
-  ["p1","p2"].forEach(pid=>{
+  activePids.forEach(pid=>{
     const gd=GANTT[pid];
     const prog=PROGRAMS.find(p=>p.id===pid);
     allRows.push({type:"prog",pid,prog,gd});
@@ -1228,7 +1228,7 @@ function GanttChart2({mode, onMsClick, selMs}){
 
           {/* ── gate lines (staggered to avoid label collisions) ── */}
           {(()=>{
-            const allGates=[...GANTT.p1.gates.map(g=>({...g,pid:"p1"})),...GANTT.p2.gates.map(g=>({...g,pid:"p2"}))];
+            const allGates=[...activePids.flatMap(pid=>GANTT[pid].gates.map(g=>({...g,pid})))];
             allGates.sort((a,b)=>a.date<b.date?-1:1);
             let lastX=-999,row=0;
             return allGates.map(g=>{
@@ -1259,7 +1259,7 @@ function GanttChart2({mode, onMsClick, selMs}){
           </g>;})()}
 
           {/* ── milestones (operator mode only) ── */}
-          {!MODE_INVESTOR&&["p1","p2"].map(pid=>
+          {!MODE_INVESTOR&&activePids.map(pid=>
             GANTT[pid].milestones.map(m=>{
               const mx=toX(m.date);
               const my=getMsY(pid,m.lane);
@@ -1276,7 +1276,7 @@ function GanttChart2({mode, onMsClick, selMs}){
           )}
 
           {/* ── investor milestones ── */}
-          {MODE_INVESTOR&&["p1","p2"].map(pid=>{
+          {MODE_INVESTOR&&activePids.map(pid=>{
             const gd=GANTT[pid];
             const progRowIdx=allRows.findIndex(r=>r.type==="prog"&&r.pid===pid);
             const phaseCount=gd.phases.length;
@@ -1315,7 +1315,7 @@ function GanttChart2({mode, onMsClick, selMs}){
           const ry=rowY[ri];
           if(row.type==="prog") return <text key={"ptxt"+ri} x={8} y={ry+PH/2+4}
             style={{fontSize:11,fontWeight:700,fill:row.prog.color,fontFamily:"'DM Sans',sans-serif"}}>
-            {row.prog.name} · {row.prog.indication}
+            {row.prog.code} · {row.prog.target}
           </text>;
           if(row.type==="lane") return <text key={"ltxt"+ri} x={8} y={ry+LH/2+4}
             style={{fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",
@@ -1399,7 +1399,7 @@ function TaskTable(){
           return <React.Fragment key={pid}>
             <tr className="prog-hdr">
               <td colSpan={6} style={{background:prog.color}}>
-                {prog.name} — {prog.indication} ({prog.code})
+                {prog.code} · {prog.target}
               </td>
             </tr>
             {gd.lanes.map(lane=>{
@@ -1464,7 +1464,8 @@ function TaskTable(){
 
 /* ── PROGRAMS VIEW ── */
 function ProgramsView(){
-  const [mode, setMode]=React.useState("operator");
+  const [mode, setMode]=React.useState("investor");
+  const [selProg, setSelProg]=React.useState("both");
   const [selMs, setSelMs]=React.useState(null);
 
   return <div>
@@ -1480,6 +1481,12 @@ function ProgramsView(){
       {[["operator","Operator"],["investor","Investor"]].map(([v,l])=>(
         <button key={v} className={`gantt-mode-btn${mode===v?" active":""}`}
           onClick={()=>setMode(v)}>{l}</button>
+      ))}
+      <span style={{fontSize:10.5,color:"var(--t3)",fontWeight:600,textTransform:"uppercase",
+        letterSpacing:"0.08em",marginLeft:16}}>Program:</span>
+      {[["both","All"],["p1","YEM-001"],["p2","YEM-002"]].map(([v,l])=>(
+        <button key={v} className={`gantt-mode-btn${selProg===v?" active":""}`}
+          onClick={()=>setSelProg(v)}>{l}</button>
       ))}
       <span style={{marginLeft:"auto",fontSize:10,color:"var(--t3)"}}>
         Hover bars for detail · Click ◆ for milestone
@@ -1744,6 +1751,7 @@ function InvestorsView(){
         <div style={{fontSize:11,color:"var(--t3)",fontFamily:"'JetBrains Mono',monospace",marginBottom:14}}>Last contact: {chosen.lastContact}</div>
         <hr className="sep" style={{marginTop:0}}/>
         {[
+          ["Round Role",chosen.roundRole],
           ["Relationship",chosen.relationship],
           ["Investment Thesis",chosen.thesis],
           ["Key Concerns",chosen.concerns],
@@ -2081,8 +2089,8 @@ function toInvestors(rows){
     thesis:r.thesis||"",
     concerns:r.concerns||"",
     nextStep:r.nextStep||"—",
+    roundRole:r.ownership||r.roundRole||"",
     owner:r.owner||"",
-    ownership:r.ownership||"",
     notes:r.notes||"",
   }));
 }
