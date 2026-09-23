@@ -1520,36 +1520,53 @@ function ProgramsView(){
     </div>
 
     {/* Controls */}
-    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
-      <span style={{fontSize:10.5,color:"var(--t3)",fontWeight:600,textTransform:"uppercase",
-        letterSpacing:"0.08em"}}>View:</span>
-      {[["operator","Operator"],["investor","Investor"]].map(([v,l])=>(
-        <button key={v} className={`gantt-mode-btn${mode===v?" active":""}`}
-          onClick={()=>setMode(v)}>{l}</button>
-      ))}
-      <span style={{fontSize:10.5,color:"var(--t3)",fontWeight:600,textTransform:"uppercase",
-        letterSpacing:"0.08em",marginLeft:16}}>Program:</span>
-      <button className={`gantt-mode-btn${selProg==="both"?" active":""}`}
-        onClick={()=>setSelProg("both")}>All</button>
+    <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:14}}>
+
+      {/* Row 1 — View toggle + hint */}
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        <span style={{fontSize:10.5,color:"var(--t3)",fontWeight:600,textTransform:"uppercase",
+          letterSpacing:"0.08em",minWidth:52}}>View</span>
+        {[["operator","Operator"],["investor","Investor"]].map(([v,l])=>(
+          <button key={v} className={`gantt-mode-btn${mode===v?" active":""}`}
+            onClick={()=>setMode(v)}>{l}</button>
+        ))}
+        <span style={{marginLeft:"auto",fontSize:10,color:"var(--t3)"}}>
+          Hover bars for detail · Click ◆ for milestone
+        </span>
+      </div>
+
+      {/* Row 2 — Program filter, one indication per line when multi-indication */}
       {(()=>{
         const byInd={};
         PROGRAMS.forEach(p=>{const ind=p.indication||"Other";if(!byInd[ind])byInd[ind]=[];byInd[ind].push(p);});
-        const multiInd=Object.keys(byInd).length>1;
-        return Object.entries(byInd).map(([ind,progs])=>(
-          <React.Fragment key={ind}>
-            {multiInd&&<span style={{fontSize:9,color:"var(--t3)",fontWeight:600,
-              textTransform:"uppercase",letterSpacing:"0.1em",padding:"0 2px 0 6px",
-              borderLeft:"1px solid var(--border)",marginLeft:2}}>{ind}</span>}
-            {progs.map(p=>(
+        const entries=Object.entries(byInd);
+        const multiInd=entries.length>1;
+        return <div style={{display:"flex",flexDirection:multiInd?"column":"row",
+          gap:multiInd?4:8,alignItems:multiInd?"flex-start":"center"}}>
+          {/* "All" button + label live on first row */}
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:10.5,color:"var(--t3)",fontWeight:600,textTransform:"uppercase",
+              letterSpacing:"0.08em",minWidth:52}}>Programs</span>
+            <button className={`gantt-mode-btn${selProg==="both"?" active":""}`}
+              onClick={()=>setSelProg("both")}>All</button>
+            {!multiInd&&entries[0][1].map(p=>(
               <button key={p.id} className={`gantt-mode-btn${selProg===p.id?" active":""}`}
                 onClick={()=>setSelProg(p.id)}>{p.name}</button>
             ))}
-          </React.Fragment>
-        ));
+          </div>
+          {multiInd&&entries.map(([ind,progs])=>(
+            <div key={ind} style={{display:"flex",alignItems:"center",gap:8,paddingLeft:60}}>
+              <span style={{fontSize:9,color:"var(--t3)",fontWeight:700,textTransform:"uppercase",
+                letterSpacing:"0.1em",minWidth:90}}>{ind}</span>
+              {progs.map(p=>(
+                <button key={p.id} className={`gantt-mode-btn${selProg===p.id?" active":""}`}
+                  onClick={()=>setSelProg(p.id)}>{p.name}</button>
+              ))}
+            </div>
+          ))}
+        </div>;
       })()}
-      <span style={{marginLeft:"auto",fontSize:10,color:"var(--t3)"}}>
-        Hover bars for detail · Click ◆ for milestone
-      </span>
+
     </div>
 
     {/* Legend */}
