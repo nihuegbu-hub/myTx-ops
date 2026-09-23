@@ -585,6 +585,18 @@ const healthFor=p=>HEALTH.find(h=>p<=h.max);
 const CAPITAL={cashOnHand:18.4,monthlyBurn:1.15,runwayMonths:16,
   totalRunway:22,seriesAClose:"Mar 2025",seriesBTarget:"Q1 2028",seriesBMonthsAway:16};
 
+/* ── safe GANTT accessor — returns stub for any pid not yet hardcoded ── */
+function getGantt(pid){
+  if(GANTT[pid]) return GANTT[pid];
+  const prog=PROGRAMS.find(p=>p.id===pid)||{};
+  return {
+    rangeStart: prog.rangeStart||"2026-01-01",
+    rangeEnd:   prog.rangeEnd  ||"2030-01-01",
+    lanes:[],tasks:[],phases:[],gates:[],milestones:[],invMilestones:[],
+    _stub:true,
+  };
+}
+
 const ALERT_CONFIG={
   vendor:{critical:4,warn:10},
   investorStale:{warn:30},
@@ -750,7 +762,7 @@ function HomeView({setView}){
     .sort((a,b)=>a.weeksLeft-b.weeksLeft);   // most overdue first
 
   const stretched = TEAM
-    .filter(t=>t.ft&&(UTIL[t.id]||0)>=85)
+    .filter(t=>t.ft&&(UTIL[t.id]||0)>85)
     .sort((a,b)=>(UTIL[b.id]||0)-(UTIL[a.id]||0));
 
   const nhpTask = GANTT.p2.tasks.find(t=>t.id==="p2t6b");
@@ -763,7 +775,7 @@ function HomeView({setView}){
   return <div>
     <div className="view-head">
       <div className="view-title">This Week</div>
-      <div className="view-sub">{totalActions} items need attention · NHP 6-Month Readout in ~10 weeks</div>
+      <div className="view-sub">{totalActions} item{totalActions!==1?"s":""} need{totalActions===1?"s":""} attention</div>
     </div>
 
     {/* ── Clickable stat tiles ───────────────────────────────────── */}
@@ -902,34 +914,6 @@ function HomeView({setView}){
       }
     </SectionCard>
 
-    {/* ── NHP operational callout ─────────────────────────────────── */}
-    <div style={{padding:"14px 16px",background:"var(--amber-bg)",border:"1px solid #D4AD60",borderRadius:10,
-      display:"flex",gap:10,alignItems:"flex-start"}}>
-      <div style={{color:"var(--amber)",marginTop:1,flexShrink:0}}>{ICONS.alert}</div>
-      <div>
-        <div style={{fontWeight:600,fontSize:13,color:"var(--t1)",marginBottom:3}}>
-          Aged NHP is the single most time-constrained operational dependency
-        </div>
-        <div style={{fontSize:12,color:"var(--t2)",lineHeight:1.55}}>
-          Both programs require aged primate capacity. CCN3 slot is booked for Q4 2026 efficacy readout.
-          Program 2 slot must be reserved now — 18–24 month lead time means any delay cascades directly
-          to the Q1 2028 NHP readout and IND timeline.
-        </div>
-        <div style={{marginTop:8,display:"flex",gap:12,flexWrap:"wrap"}}>
-          {[
-            {prog:"YEM-001 · CCN3-27",color:"#0D7E8E",bg:"#E0F5F7",timeline:"Slot booked · Readout Q4 2026",task:"p1t6"},
-            {prog:"YEM-002 · Undisclosed",color:"#C9851C",bg:"#FEF5E4",timeline:"Reservation in progress · Readout Q1 2028",task:"p2t6b"},
-          ].map((s,i)=>(
-            <div key={i} style={{display:"flex",gap:6,alignItems:"center",fontSize:12,
-              padding:"4px 8px",background:s.bg,borderRadius:6}}>
-              <span className="dot" style={{background:s.color,width:6,height:6,flexShrink:0}}/>
-              <strong style={{color:s.color}}>{s.prog}</strong>
-              <span style={{color:"var(--t2)"}}>· {s.timeline}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
   </div>;
 }
 
@@ -978,29 +962,45 @@ function GanttChart2({mode, selProg="both", onMsClick, selMs}){
 
   /* ── build row list ── */
   const MODE_INVESTOR=mode==="investor";
-  const allRows=[];
+
+  /* ── group pids by indication ── */
+  const indMap={};
   activePids.forEach(pid=>{
-    const gd=GANTT[pid];
     const prog=PROGRAMS.find(p=>p.id===pid);
-    allRows.push({type:"prog",pid,prog,gd});
-    if(MODE_INVESTOR){
-      // investor: show phases as rows
-      gd.phases.forEach(ph=>allRows.push({type:"phase",phase:ph,pid,prog,gd}));
-    } else {
-      gd.lanes.forEach(lane=>{
-        allRows.push({type:"lane",lane,pid,prog});
-        gd.tasks.filter(t=>t.lane===lane.id).forEach(t=>
-          allRows.push({type:"task",task:t,lane,pid,prog}));
-      });
-    }
+    const ind=prog?.indication||"Other";
+    if(!indMap[ind])indMap[ind]=[];
+    indMap[ind].push(pid);
+  });
+  const indGroups=Object.entries(indMap); // [[indication,[pid,...]],...]
+  const multiInd=indGroups.length>1;
+
+  const allRows=[];
+  indGroups.forEach(([ind,pids])=>{
+    if(multiInd) allRows.push({type:"indication",ind});
+    pids.forEach(pid=>{
+      const gd=getGantt(pid);
+      const prog=PROGRAMS.find(p=>p.id===pid);
+      allRows.push({type:"prog",pid,prog,gd});
+      if(MODE_INVESTOR){
+        gd.phases.forEach(ph=>allRows.push({type:"phase",phase:ph,pid,prog,gd}));
+      } else {
+        gd.lanes.forEach(lane=>{
+          allRows.push({type:"lane",lane,pid,prog});
+          gd.tasks.filter(t=>t.lane===lane.id).forEach(t=>
+            allRows.push({type:"task",task:t,lane,pid,prog}));
+        });
+      }
+    });
   });
 
   /* ── pre-compute Y positions ── */
+  const IH=20; // indication header height
   const rowY=[];
   let y=AH;
   allRows.forEach(r=>{
     rowY.push(y);
-    if(r.type==="prog") y+=PH;
+    if(r.type==="indication") y+=IH;
+    else if(r.type==="prog") y+=PH;
     else if(r.type==="lane") y+=LH;
     else if(r.type==="phase") y+=32;
     else y+=RH;
@@ -1042,7 +1042,7 @@ function GanttChart2({mode, selProg="both", onMsClick, selMs}){
     const laneIdx=allRows.findIndex(r=>r.type==="lane"&&r.pid===pid&&r.lane.id===laneId);
     if(laneIdx<0) return AH+30;
     const laneYval=rowY[laneIdx];
-    const gd=GANTT[pid];
+    const gd=getGantt(pid);
     const nTasks=gd.tasks.filter(t=>t.lane===laneId).length;
     return laneYval+LH+nTasks*RH/2;
   }
@@ -1173,6 +1173,12 @@ function GanttChart2({mode, selProg="both", onMsClick, selMs}){
           {/* ── rows (lane bgs + bars) ── */}
           {allRows.map((row,ri)=>{
             const ry=rowY[ri];
+            if(row.type==="indication"){
+              return <React.Fragment key={"indr"+ri}>
+                <rect x={0} y={ry} width={LW+CW} height={IH} fill="var(--sand)" opacity={0.7}/>
+                <line x1={0} y1={ry} x2={LW+CW} y2={ry} stroke="var(--border)" strokeWidth={0.6}/>
+              </React.Fragment>;
+            }
             if(row.type==="prog"){
               return <React.Fragment key={"pr"+ri}>
                 <rect x={LW} y={ry} width={CW} height={PH}
@@ -1229,7 +1235,7 @@ function GanttChart2({mode, selProg="both", onMsClick, selMs}){
 
           {/* ── gate lines (staggered to avoid label collisions) ── */}
           {(()=>{
-            const allGates=[...activePids.flatMap(pid=>GANTT[pid].gates.map(g=>({...g,pid})))];
+            const allGates=[...activePids.flatMap(pid=>getGantt(pid).gates.map(g=>({...g,pid})))];
             allGates.sort((a,b)=>a.date<b.date?-1:1);
             let lastX=-999,row=0;
             return allGates.map(g=>{
@@ -1261,7 +1267,7 @@ function GanttChart2({mode, selProg="both", onMsClick, selMs}){
 
           {/* ── milestones (operator mode only) ── */}
           {!MODE_INVESTOR&&activePids.map(pid=>
-            GANTT[pid].milestones.map(m=>{
+            getGantt(pid).milestones.map(m=>{
               const mx=toX(m.date);
               const my=getMsY(pid,m.lane);
               const mc=MS_COLORS[m.type]||"#6B7280";
@@ -1278,7 +1284,7 @@ function GanttChart2({mode, selProg="both", onMsClick, selMs}){
 
           {/* ── investor milestones ── */}
           {MODE_INVESTOR&&activePids.map(pid=>{
-            const gd=GANTT[pid];
+            const gd=getGantt(pid);
             const progRowIdx=allRows.findIndex(r=>r.type==="prog"&&r.pid===pid);
             const phaseCount=gd.phases.length;
             // Position milestones below their program's phases
@@ -1314,6 +1320,11 @@ function GanttChart2({mode, selProg="both", onMsClick, selMs}){
         {/* row labels */}
         {allRows.map((row,ri)=>{
           const ry=rowY[ri];
+          if(row.type==="indication") return <text key={"indlbl"+ri} x={8} y={ry+IH/2+3.5}
+            style={{fontSize:8.5,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.13em",
+              fill:"var(--t3)",fontFamily:"'DM Sans',sans-serif"}}>
+            {row.ind}
+          </text>;
           if(row.type==="prog") return <text key={"ptxt"+ri} x={8} y={ry+PH/2+4}
             style={{fontSize:11,fontWeight:700,fill:row.prog.color,fontFamily:"'DM Sans',sans-serif"}}>
             {row.prog.name} · {row.prog.code}
@@ -1395,8 +1406,27 @@ function TaskTable({selProg="both"}){
         <th>Risk</th>
       </tr></thead>
       <tbody>
-        {activePids.map(pid=>{
-          const gd=GANTT[pid];
+        {(()=>{
+          // group activePids by indication
+          const tblIndMap={};
+          activePids.forEach(pid=>{
+            const prog=PROGRAMS.find(p=>p.id===pid);
+            const ind=prog?.indication||"Other";
+            if(!tblIndMap[ind])tblIndMap[ind]=[];
+            tblIndMap[ind].push(pid);
+          });
+          const tblMultiInd=Object.keys(tblIndMap).length>1;
+          return Object.entries(tblIndMap).map(([ind,pids])=>(
+            <React.Fragment key={ind}>
+              {tblMultiInd&&<tr>
+                <td colSpan={6} style={{padding:"8px 12px 4px",fontSize:8.5,fontWeight:700,
+                  letterSpacing:"0.13em",textTransform:"uppercase",color:"var(--t3)",
+                  background:"var(--sand)",borderBottom:"1px solid var(--border)"}}>
+                  {ind}
+                </td>
+              </tr>}
+              {pids.map(pid=>{
+          const gd=getGantt(pid);
           const prog=PROGRAMS.find(p=>p.id===pid);
           return <React.Fragment key={pid}>
             <tr className="prog-hdr">
@@ -1458,7 +1488,10 @@ function TaskTable({selProg="both"}){
               </React.Fragment>;
             })}
           </React.Fragment>;
-        })}
+              })}
+            </React.Fragment>
+          ));
+        })()}
       </tbody>
     </table>
   </div>;
@@ -1473,7 +1506,17 @@ function ProgramsView(){
   return <div>
     <div className="view-head">
       <div className="view-title">Development Programs</div>
-      <div className="view-sub">YEM-001 (CCN3) · YEM-002 (Undisclosed Target) · Osteoporosis</div>
+      <div className="view-sub">{(()=>{
+        const byInd={};
+        PROGRAMS.forEach(p=>{
+          const ind=p.indication||"Other";
+          if(!byInd[ind])byInd[ind]=[];
+          byInd[ind].push(`${p.name} (${p.code})`);
+        });
+        return Object.entries(byInd)
+          .map(([ind,names])=>`${names.join(" · ")} — ${ind}`)
+          .join(" | ");
+      })()}</div>
     </div>
 
     {/* Controls */}
@@ -1486,10 +1529,24 @@ function ProgramsView(){
       ))}
       <span style={{fontSize:10.5,color:"var(--t3)",fontWeight:600,textTransform:"uppercase",
         letterSpacing:"0.08em",marginLeft:16}}>Program:</span>
-      {[["both","All"],["p1","YEM-001"],["p2","YEM-002"]].map(([v,l])=>(
-        <button key={v} className={`gantt-mode-btn${selProg===v?" active":""}`}
-          onClick={()=>setSelProg(v)}>{l}</button>
-      ))}
+      <button className={`gantt-mode-btn${selProg==="both"?" active":""}`}
+        onClick={()=>setSelProg("both")}>All</button>
+      {(()=>{
+        const byInd={};
+        PROGRAMS.forEach(p=>{const ind=p.indication||"Other";if(!byInd[ind])byInd[ind]=[];byInd[ind].push(p);});
+        const multiInd=Object.keys(byInd).length>1;
+        return Object.entries(byInd).map(([ind,progs])=>(
+          <React.Fragment key={ind}>
+            {multiInd&&<span style={{fontSize:9,color:"var(--t3)",fontWeight:600,
+              textTransform:"uppercase",letterSpacing:"0.1em",padding:"0 2px 0 6px",
+              borderLeft:"1px solid var(--border)",marginLeft:2}}>{ind}</span>}
+            {progs.map(p=>(
+              <button key={p.id} className={`gantt-mode-btn${selProg===p.id?" active":""}`}
+                onClick={()=>setSelProg(p.id)}>{p.name}</button>
+            ))}
+          </React.Fragment>
+        ));
+      })()}
       <span style={{marginLeft:"auto",fontSize:10,color:"var(--t3)"}}>
         Hover bars for detail · Click ◆ for milestone
       </span>
@@ -1602,8 +1659,8 @@ function ProgramsView(){
         borderBottom:"1px solid var(--border)"}}>
         <div className="card-head" style={{margin:0}}>All Tasks by Lane</div>
         <span style={{fontSize:10,color:"var(--t3)",marginLeft:4}}>
-          {(selProg==="both"?["p1","p2"]:[selProg]).reduce((s,pid)=>s+GANTT[pid].tasks.length,0)} tasks
-          {selProg==="both"?" across both programs":` — ${PROGRAMS.find(p=>p.id===selProg)?.name||selProg}`}
+          {(selProg==="both"?PROGRAMS.map(p=>p.id):[selProg]).reduce((s,pid)=>s+(getGantt(pid)?.tasks.length||0),0)} tasks
+          {selProg==="both"?` across ${PROGRAMS.length} programs`:` — ${PROGRAMS.find(p=>p.id===selProg)?.name||selProg}`}
         </span>
       </div>
       <TaskTable selProg={selProg}/>
