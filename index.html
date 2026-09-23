@@ -1316,7 +1316,7 @@ function GanttChart2({mode, selProg="both", onMsClick, selMs}){
           const ry=rowY[ri];
           if(row.type==="prog") return <text key={"ptxt"+ri} x={8} y={ry+PH/2+4}
             style={{fontSize:11,fontWeight:700,fill:row.prog.color,fontFamily:"'DM Sans',sans-serif"}}>
-            {row.prog.code} · {row.prog.target}
+            {row.prog.name} · {row.prog.code}
           </text>;
           if(row.type==="lane") return <text key={"ltxt"+ri} x={8} y={ry+LH/2+4}
             style={{fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",
@@ -1366,7 +1366,8 @@ function GanttChart2({mode, selProg="both", onMsClick, selMs}){
 }
 
 /* ── TASK TABLE ── */
-function TaskTable(){
+function TaskTable({selProg="both"}){
+  const activePids=selProg==="both"?["p1","p2"]:[selProg];
   const sMap={complete:"complete","on-track":"on track","at-risk":"at risk",
     "not-started":"not started",delayed:"delayed"};
   const sStyle=s=>({
@@ -1394,13 +1395,13 @@ function TaskTable(){
         <th>Risk</th>
       </tr></thead>
       <tbody>
-        {["p1","p2"].map(pid=>{
+        {activePids.map(pid=>{
           const gd=GANTT[pid];
           const prog=PROGRAMS.find(p=>p.id===pid);
           return <React.Fragment key={pid}>
             <tr className="prog-hdr">
               <td colSpan={6} style={{background:prog.color}}>
-                {prog.code} · {prog.target}
+                {prog.name} · {prog.code}
               </td>
             </tr>
             {gd.lanes.map(lane=>{
@@ -1601,10 +1602,11 @@ function ProgramsView(){
         borderBottom:"1px solid var(--border)"}}>
         <div className="card-head" style={{margin:0}}>All Tasks by Lane</div>
         <span style={{fontSize:10,color:"var(--t3)",marginLeft:4}}>
-          {GANTT.p1.tasks.length+GANTT.p2.tasks.length} tasks across both programs
+          {(selProg==="both"?["p1","p2"]:[selProg]).reduce((s,pid)=>s+GANTT[pid].tasks.length,0)} tasks
+          {selProg==="both"?" across both programs":` — ${PROGRAMS.find(p=>p.id===selProg)?.name||selProg}`}
         </span>
       </div>
-      <TaskTable/>
+      <TaskTable selProg={selProg}/>
     </div>
   </div>;
 }
