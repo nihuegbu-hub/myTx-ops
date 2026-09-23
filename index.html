@@ -1348,7 +1348,14 @@ function GanttChart2({mode, selProg="both", onMsClick, selMs}){
               pharm:"science",disc:"science",abdisc:"science",leadopt:"science",
               tox2:"regulatory",cmc2:"investor",reg2:"regulatory"};
             const dynMilestones=(gd.tasks||[])
-              .filter(t=>t.milestone&&t.status!=="complete")
+              // Investor Gantt milestone logic:
+              // • pub_conf + milestone=YES + status=complete → accomplishment, show in Investor
+              // • non-pub_conf + milestone=YES → strategic event, always show in Investor
+              // • pub_conf + milestone=YES + status≠complete → prep work, Operator only
+              .filter(t=>t.milestone&&(
+                t.lane!=="pub_conf"          // non-pub_conf milestones always appear
+                ||(t.status==="complete")    // pub_conf only when accomplished
+              ))
               .map(t=>({date:t.end,name:t.name,type:laneTypeMap[t.lane]||"investor"}));
             const invMs=dynMilestones.length>0?dynMilestones:gd.invMilestones;
             return invMs.map((m,mi)=>{
