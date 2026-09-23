@@ -312,6 +312,7 @@ const GANTT={
       {id:"cmc",     label:"CMC / Manufacturing",    bg:"rgba(201,133,28,0.06)"},
       {id:"reg",     label:"Regulatory Affairs",     bg:"rgba(108,90,211,0.06)"},
       {id:"clinical",label:"Phase 1 Clinical",       bg:"rgba(8,145,178,0.06)"},
+      {id:"pub_conf",label:"Publications & Conferences",bg:"rgba(107,83,164,0.06)"},
     ],
     tasks:[],  // populated from Google Sheets
 
@@ -350,6 +351,7 @@ const GANTT={
       {id:"tox2",   label:"Toxicology",           bg:"rgba(201,133,28,0.06)"},
       {id:"cmc2",   label:"CMC / Manufacturing",  bg:"rgba(201,133,28,0.06)"},
       {id:"reg2",   label:"Regulatory Affairs",   bg:"rgba(108,90,211,0.06)"},
+      {id:"pub_conf",label:"Publications & Conferences",bg:"rgba(107,83,164,0.06)"},
     ],
     tasks:[],  // populated from Google Sheets
 
@@ -767,10 +769,23 @@ function HomeView({setView}){
 
   const nhpTask = GANTT.p2.tasks.find(t=>t.id==="p2t6b");
 
+  /* ── upcoming pub/conf milestones (within 12 weeks) ── */
+  const now=new Date();
+  const upcomingEvents=PROGRAMS.flatMap(prog=>{
+    return (getGantt(prog.id).tasks||[])
+      .filter(t=>t.lane==="pub_conf"&&t.milestone&&t.status!=="complete")
+      .map(t=>{
+        const d=new Date(t.end);
+        const wks=Math.round((d-now)/(7*24*3600*1000));
+        return {...t,prog,wks};
+      });
+  }).filter(t=>t.wks>=-2&&t.wks<=12)
+    .sort((a,b)=>a.wks-b.wks);
+
   /* ── urgency stripe colours ── */
   const stripe={critical:"var(--coral)",high:"var(--amber)",medium:"var(--current)",ops:"var(--violet)"};
 
-  const totalActions = urgent.length + overdue.length + 2 /* ops */ + stretched.filter(t=>(UTIL[t.id]||0)>=90).length;
+  const totalActions = urgent.length + overdue.length + 1 /* nhp slot */ + upcomingEvents.length + stretched.filter(t=>(UTIL[t.id]||0)>=90).length;
 
   return <div>
     <div className="view-head">
@@ -849,7 +864,7 @@ function HomeView({setView}){
     </SectionCard>
 
     {/* ── Section 3: Ops & Timing ────────────────────────────────── */}
-    <SectionCard title="Ops & Timing" count={2}
+    <SectionCard title="Ops & Timing" count={1}
       countColor="var(--violet)"
       badge={{label:"Action Required",color:"#4C1D95",bg:"#F0EDF8"}}>
       <ActionRow
@@ -858,15 +873,32 @@ function HomeView({setView}){
         detail={`18–24 month facility lead time. Slot reservation is live in YEM-002 / In Vivo Preclinical (task p2t6b). Reserve by Oct 2026 or P2 NHP Efficacy Study (Q1 2028) slips to 2029.`}
         meta={[{label:"YEM-002",color:"#C9851C",bg:"#FEF5E4"},{label:"Programs → In Vivo",color:"#0D7E8E",bg:"#E0F5F7"}]}
         owners={["yves","walter"]}/>
-      <ActionRow
-        stripe={stripe.medium}
-        label="ASBMR Abstract — mechanism data submission"
-        detail="Annual bone health conference (Oct 2026). Early CCN3 mechanism data builds scientific credibility ahead of NHP readout and investor narrative."
-        meta={[{label:"Conference",color:"#6B53A4",bg:"#F0EDF8"},{label:"YEM-001",color:"#0D7E8E",bg:"#E0F5F7"}]}
-        owners={["yves","onaiza"]}/>
     </SectionCard>
 
-    {/* ── Section 4: Team Capacity ───────────────────────────────── */}
+    {/* ── Section 4: Upcoming Conferences & Publications ──────────── */}
+    <SectionCard title="Upcoming Events" count={upcomingEvents.length}
+      countColor="var(--violet)"
+      badge={{label:"Conferences & Publications",color:"#4C1D95",bg:"#F0EDF8"}}
+      onViewAll={()=>setView("programs")} viewLabel="Programs →">
+      {upcomingEvents.length===0
+        ? <div style={{padding:"14px 16px",color:"var(--t3)",fontSize:12}}>No conferences or publications in the next 12 weeks.</div>
+        : upcomingEvents.map(t=>{
+            const overdue=t.wks<0;
+            return <ActionRow key={t.id}
+              stripe={overdue?stripe.critical:t.wks<=4?stripe.high:stripe.medium}
+              label={t.name}
+              detail={t.risk||`${t.prog.name} (${t.prog.code}) · Publications & Conferences`}
+              rightLabel={overdue?`${Math.abs(t.wks)}w overdue`:`${t.wks}w`}
+              rightColor={overdue?"var(--coral)":t.wks<=4?"var(--amber)":"var(--current)"}
+              meta={[
+                {label:"Publication / Conference",color:"#4C1D95",bg:"#F0EDF8"},
+                {label:t.prog.name,color:t.prog.color,bg:"rgba(0,0,0,0.04)"},
+              ]}/>;
+          })
+      }
+    </SectionCard>
+
+    {/* ── Section 5: Team Capacity ───────────────────────────────── */}
     <SectionCard title="Team Capacity"
       count={stretched.filter(t=>(UTIL[t.id]||0)>=90).length}
       countColor={stretched.filter(t=>(UTIL[t.id]||0)>=90).length>1?"var(--coral)":"var(--amber)"}
@@ -1211,12 +1243,32 @@ function GanttChart2({mode, selProg="both", onMsClick, selMs}){
               const x1=toX(t.start),x2=toX(t.end);
               const bw=Math.max(x2-x1,3);
               const by=ry+4,bh=RH-8;
+
+              /* pub_conf milestones → diamond marker */
+              if(t.lane==="pub_conf"&&t.milestone){
+                const mx=toX(t.end);
+                const cy=ry+RH/2;
+                const S=6;
+                const done=t.status==="complete";
+                return <React.Fragment key={t.id}>
+                  <rect x={LW} y={ry} width={CW} height={RH} fill={row.lane.bg} opacity={0.35}/>
+                  <polygon points={`${mx},${cy-S} ${mx+S},${cy} ${mx},${cy+S} ${mx-S},${cy}`}
+                    fill={done?"#6B7280":"#6B53A4"} opacity={done?0.6:0.9}
+                    onMouseEnter={e=>showTip(e,t)} onMouseLeave={()=>setTip(null)}
+                    style={{cursor:"default"}}/>
+                </React.Fragment>;
+              }
+
               const fill=barFill(t,row.prog);
               const stroke=barStroke(t,row.prog);
+              /* pub_conf task bars use purple */
+              const pubFill=t.lane==="pub_conf"
+                ?(t.status==="complete"?"#6B7280":t.status==="at-risk"?"#C9851C":"#6B53A4")
+                :fill;
               return <React.Fragment key={t.id}>
                 <rect x={LW} y={ry} width={CW} height={RH} fill={row.lane.bg} opacity={0.35}/>
                 <rect x={x1} y={by} width={bw} height={bh} rx={2.5}
-                  fill={fill} stroke={stroke}
+                  fill={t.lane==="pub_conf"?pubFill:fill} stroke={stroke}
                   strokeWidth={t.crit?1.5:t.status==="not-started"?1:0}
                   strokeDasharray={t.ext==="cmo"||t.ext==="cro"?"4,2.5":""}
                   opacity={t.status==="not-started"?1:0.85}
@@ -1457,15 +1509,17 @@ function TaskTable({selProg="both"}){
                       {fmtDate(t.start)} – {fmtDate(t.end)}
                     </td>
                     <td>
-                      {t.status==="complete"
-                        ? <span style={{color:"#6B7280",fontSize:10.5}}>✓ Done</span>
-                        : <div className="pbar2">
-                            <div className="pbar2-track">
-                              <div className="pbar2-fill" style={{width:t.pct+"%",
-                                background:t.status==="at-risk"?"#C9851C":"var(--current)"}}/>
+                      {t.milestone
+                        ? <span style={{color:t.status==="complete"?"#6B7280":"#6B53A4",fontSize:11}}>◆</span>
+                        : t.status==="complete"
+                          ? <span style={{color:"#6B7280",fontSize:10.5}}>✓ Done</span>
+                          : <div className="pbar2">
+                              <div className="pbar2-track">
+                                <div className="pbar2-fill" style={{width:t.pct+"%",
+                                  background:t.status==="at-risk"?"#C9851C":"var(--current)"}}/>
+                              </div>
+                              <span style={{fontSize:10,color:"var(--t3)"}}>{t.pct}%</span>
                             </div>
-                            <span style={{fontSize:10,color:"var(--t3)"}}>{t.pct}%</span>
-                          </div>
                       }
                     </td>
                     <td>
@@ -1584,7 +1638,7 @@ function ProgramsView(){
       ))}
       {[
         ["Regulatory",MS_COLORS.regulatory],["Clinical",MS_COLORS.clinical],
-        ["Science",MS_COLORS.science],["Investor",MS_COLORS.investor],
+        ["Science",MS_COLORS.science],["Investor",MS_COLORS.investor],["Pub / Conf","#6B53A4"],
       ].map(([l,c])=>(
         <div key={l} style={{display:"flex",alignItems:"center",gap:4,color:"var(--t2)"}}>
           <svg width={11} height={11} viewBox="-6 -6 12 12">
@@ -2150,6 +2204,7 @@ function toTasks(rows){
       pct:+r.pct||0,
       status:r.status||"not-started",
       crit:r.crit==="YES",
+      milestone:(r.milestone||"").trim()==="YES",
     };
     if(r.ext)t.ext=r.ext;
     if(r.vendor)t.vendor=r.vendor;
