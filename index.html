@@ -554,15 +554,21 @@ const SCENARIOS=[
 let INVESTORS=[];
 
 const INV_STATUS={
+  "committed":        {label:"Committed",        color:"#6B53A4",bg:"#F0EDF8"},
   "warm":             {label:"Warm",             color:"#14956A",bg:"#E6F7F1"},
   "active-diligence": {label:"Active Diligence", color:"#0D7E8E",bg:"#E6F4F5"},
+  "first-meeting":    {label:"First Meeting",    color:"#C9851C",bg:"#FDF3E3"},
   "not-contacted":    {label:"Not Yet Contacted",color:"#8CA5BC",bg:"var(--sand)"},
 };
 
 const INV_TIER={
-  "Existing":   {color:"#0C1B2E",bg:"#E3EDF4"},
-  "Prospective":{color:"#0D7E8E",bg:"#E6F4F5"},
-  "Strategic":  {color:"#6B53A4",bg:"#F0EDF8"},
+  "Existing":        {color:"#0C1B2E",bg:"#E3EDF4"},
+  "Prospective":     {color:"#0D7E8E",bg:"#E6F4F5"},
+  "Strategic":       {color:"#6B53A4",bg:"#F0EDF8"},
+  "committed":       {color:"#6B53A4",bg:"#F0EDF8"},
+  "active-diligence":{color:"#0D7E8E",bg:"#E6F4F5"},
+  "first-meeting":   {color:"#C9851C",bg:"#FDF3E3"},
+  "not-contacted":   {color:"#8CA5BC",bg:"var(--sand)"},
 };
 
 let ALLOCATION={};
@@ -1715,7 +1721,7 @@ function InvestorsView(){
                   <div style={{fontWeight:500,color:"var(--t1)"}}>{inv.name}</div>
                   <div style={{fontSize:11,color:"var(--t3)"}}>{inv.lead}</div>
                 </td>
-                <td><Chip {...INV_TIER[inv.tier]} label={inv.tier} small/></td>
+                <td><Chip {...INV_TIER[inv.tier]} label={INV_STATUS[inv.tier]?.label||inv.tier} small/></td>
                 <td><span className="sdot"><span className="dot" style={{background:s.color}}/>{s.label}</span></td>
                 <td><Owner id={inv.owner}/></td>
               </tr>;
@@ -1731,7 +1737,7 @@ function InvestorsView(){
             <div style={{fontSize:12,color:"var(--t3)",marginTop:2}}>{chosen.type} · {chosen.lead}</div>
           </div>
           <div style={{display:"flex",gap:5}}>
-            <Chip {...INV_TIER[chosen.tier]} label={chosen.tier}/>
+            <Chip {...INV_TIER[chosen.tier]} label={INV_STATUS[chosen.tier]?.label||chosen.tier}/>
             <Chip {...(INV_STATUS[chosen.status]||{})} label={INV_STATUS[chosen.status]?.label||chosen.status}/>
           </div>
         </div>
