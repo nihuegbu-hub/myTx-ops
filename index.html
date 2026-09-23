@@ -584,8 +584,8 @@ const HEALTH=[
 ];
 const healthFor=p=>HEALTH.find(h=>p<=h.max);
 
-const CAPITAL={cashOnHand:18.4,monthlyBurn:1.15,runwayMonths:16,
-  totalRunway:22,seriesAClose:"Mar 2025",seriesBTarget:"Q1 2028",seriesBMonthsAway:16};
+const CAPITAL={cashOnHand:30.5,monthlyBurn:1.2,runwayMonths:26,
+  totalRunway:30,seriesAClose:"Sep 2026",seriesBTarget:"Q1 2028",seriesBMonthsAway:16};
 
 /* ── safe GANTT accessor — returns stub for any pid not yet hardcoded ── */
 function getGantt(pid){
@@ -687,7 +687,7 @@ function Sidebar({view,setView}){
     </nav>
     <div className="sb-footer">
       <div className="sb-date">Sep 22, 2026</div>
-      <div className="sb-round">Series A · Active</div>
+      <div className="sb-round">Series A Ext. · Complete</div>
     </div>
   </div>;
 }
@@ -767,10 +767,23 @@ function HomeView({setView}){
     .filter(t=>t.ft&&(UTIL[t.id]||0)>85)
     .sort((a,b)=>(UTIL[b.id]||0)-(UTIL[a.id]||0));
 
-  const nhpTask = GANTT.p2.tasks.find(t=>t.id==="p2t6b");
+  const now=new Date();
+  /* ── critical path tasks needing attention ── */
+  const critItems=PROGRAMS.flatMap(prog=>{
+    const tasks=getGantt(prog.id).tasks||[];
+    return tasks
+      .filter(t=>t.crit&&(
+        t.status==="at-risk"||
+        (t.status==="not-started"&&new Date(t.end)<=new Date(now.getTime()+8*7*24*3600*1000))
+      ))
+      .map(t=>({...t,prog,wksToEnd:Math.round((new Date(t.end)-now)/(7*24*3600*1000))}));
+  }).sort((a,b)=>{
+    if(a.status==="at-risk"&&b.status!=="at-risk")return -1;
+    if(b.status==="at-risk"&&a.status!=="at-risk")return 1;
+    return a.wksToEnd-b.wksToEnd;
+  });
 
   /* ── upcoming pub/conf milestones (within 12 weeks) ── */
-  const now=new Date();
   const upcomingEvents=PROGRAMS.flatMap(prog=>{
     return (getGantt(prog.id).tasks||[])
       .filter(t=>t.lane==="pub_conf"&&t.milestone&&t.status!=="complete")
@@ -785,7 +798,7 @@ function HomeView({setView}){
   /* ── urgency stripe colours ── */
   const stripe={critical:"var(--coral)",high:"var(--amber)",medium:"var(--current)",ops:"var(--violet)"};
 
-  const totalActions = urgent.length + overdue.length + 1 /* nhp slot */ + upcomingEvents.length + stretched.filter(t=>(UTIL[t.id]||0)>=90).length;
+  const totalActions = urgent.length + overdue.length + critItems.length + upcomingEvents.length + stretched.filter(t=>(UTIL[t.id]||0)>=90).length;
 
   return <div>
     <div className="view-head">
@@ -863,16 +876,31 @@ function HomeView({setView}){
       }
     </SectionCard>
 
-    {/* ── Section 3: Ops & Timing ────────────────────────────────── */}
-    <SectionCard title="Ops & Timing" count={1}
-      countColor="var(--violet)"
-      badge={{label:"Action Required",color:"#4C1D95",bg:"#F0EDF8"}}>
-      <ActionRow
-        stripe={stripe.high}
-        label="Aged NHP Slot — reserve Program 2 cohort"
-        detail={`18–24 month facility lead time. Slot reservation is live in YEM-002 / In Vivo Preclinical (task p2t6b). Reserve by Oct 2026 or P2 NHP Efficacy Study (Q1 2028) slips to 2029.`}
-        meta={[{label:"YEM-002",color:"#C9851C",bg:"#FEF5E4"},{label:"Programs → In Vivo",color:"#0D7E8E",bg:"#E0F5F7"}]}
-        owners={["yves","walter"]}/>
+    {/* ── Section 3: Critical Path ────────────────────────────────── */}
+    <SectionCard title="Critical Path" count={critItems.length}
+      countColor={critItems.length>0?"var(--coral)":"var(--t3)"}
+      badge={{label:"Needs Attention",color:"#7F1D1D",bg:"#FDECEA"}}
+      onViewAll={()=>setView("programs")} viewLabel="Programs →">
+      {critItems.length===0
+        ? <div style={{padding:"14px 16px",color:"var(--t3)",fontSize:12}}>No critical path items need immediate attention.</div>
+        : critItems.map(t=>{
+            const past=t.wksToEnd<0;
+            const laneLabel=t.lane.replace(/[0-9]/g,"").toUpperCase();
+            return <ActionRow key={t.id}
+              stripe={t.status==="at-risk"?stripe.high:stripe.critical}
+              label={`${t.name}`}
+              detail={t.risk||(past?`End date passed — not yet started. Delay cascades on critical path.`:`Not started · ${t.wksToEnd===0?"due this week":`${t.wksToEnd}w to deadline`}`)}
+              rightLabel={past?`${Math.abs(t.wksToEnd)}w overdue`:t.wksToEnd===0?"This week":`${t.wksToEnd}w`}
+              rightColor={past||t.status==="at-risk"?"var(--coral)":"var(--amber)"}
+              meta={[
+                {label:t.status==="at-risk"?"At Risk":"Not Started",
+                 color:t.status==="at-risk"?"#92400E":"#7F1D1D",
+                 bg:t.status==="at-risk"?"#FEF5E4":"#FDECEA"},
+                {label:t.prog.code,color:t.prog.color,bg:"rgba(0,0,0,0.04)"},
+                {label:laneLabel,color:"#374151",bg:"var(--sand)"},
+              ]}/>;
+          })
+      }
     </SectionCard>
 
     {/* ── Section 4: Upcoming Conferences & Publications ──────────── */}
