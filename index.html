@@ -1044,11 +1044,12 @@ function GanttChart2({mode, selProg="both", onMsClick, selMs}){
     if(t.status==="complete")   return"#6B7280";
     if(t.status==="at-risk")    return"#C9851C";
     if(t.status==="not-started")return"none";
+    if(t.crit)                  return"#D4432A"; // critical path → red
     return prog.color;
   }
   function barStroke(t,prog){
-    if(t.status==="not-started")return"var(--border)";
-    if(t.crit) return prog.color;
+    if(t.status==="not-started")return t.crit?"#A0200E":"var(--border)";
+    if(t.crit) return"#A0200E";
     return"none";
   }
   function statusChipStyle(s){
@@ -1339,12 +1340,20 @@ function GanttChart2({mode, selProg="both", onMsClick, selMs}){
             const gd=getGantt(pid);
             const progRowIdx=allRows.findIndex(r=>r.type==="prog"&&r.pid===pid);
             const phaseCount=gd.phases.length;
-            // Position milestones below their program's phases
             const baseY=rowY[progRowIdx]||AH;
             const afterPhasesY=baseY+PH+phaseCount*32+8;
-            return gd.invMilestones.map((m,mi)=>{
+            // Build investor milestones from milestone=YES tasks (dynamic) + any hardcoded fallbacks
+            const laneTypeMap={reg:"regulatory",clinical:"clinical",pub_conf:"science",
+              tox:"regulatory",cmc:"investor",invivo:"science",invivo2:"science",
+              pharm:"science",disc:"science",abdisc:"science",leadopt:"science",
+              tox2:"regulatory",cmc2:"investor",reg2:"regulatory"};
+            const dynMilestones=(gd.tasks||[])
+              .filter(t=>t.milestone&&t.status!=="complete")
+              .map(t=>({date:t.end,name:t.name,type:laneTypeMap[t.lane]||"investor"}));
+            const invMs=dynMilestones.length>0?dynMilestones:gd.invMilestones;
+            return invMs.map((m,mi)=>{
               const mx=toX(m.date);
-              const mc=MS_COLORS[m.type]||"#6B7280";
+              const mc=MS_COLORS[m.type]||MS_COLORS.investor;
               const lineEndY=afterPhasesY+mi*16+6;
               return <g key={pid+m.date}
                 onMouseEnter={e=>showTip(e,{name:m.name,isMilestone:true,type:m.type,date:m.date})}
