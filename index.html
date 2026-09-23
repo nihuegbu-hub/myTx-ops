@@ -171,6 +171,10 @@ hr.sep{border:none;border-top:1px solid var(--border);margin:14px 0}
   .g3.stat-row{grid-template-columns:repeat(3,1fr);gap:8px}
   .tb-next{display:none}
 }
+/* Scenario Gantt: hide status chip on narrow screens to give timeline more room */
+@media(max-width:520px){
+  :root{--chip-display:none}
+}
 
 
 
@@ -553,6 +557,16 @@ const SCENARIOS=[
    bdImplication:"Pharma conversations pause; focus shifts to mechanistic clarity on NHP data"},
 ];
 
+/* ── SCENARIO SHIFTS (weeks) ── */
+/* Adjust these two numbers to change upside / downside sensitivity.
+   Positive = delay (rightward shift), negative = acceleration.
+   Applied to all crit=YES tasks for the selected programs.
+   Program-level rule: add per-program overrides here in future if needed. */
+const SCENARIO_SHIFTS={
+  upside:-8,    // 2 months earlier than base
+  downside:26,  // ~6 months later (accounts for additional NHP study)
+};
+
 let INVESTORS=[];
 
 const INV_STATUS={
@@ -635,6 +649,7 @@ const ICONS={
   capital: <Ico d="M3 18V11M8.5 18V7M14 18V3" sw={2}/>,
   alert:   <Ico d="M10 6v4M10 14h.01" d2="M10 18a8 8 0 100-16 8 8 0 000 16z"/>,
   chevron: <Ico d="M7 5l5 5-5 5" size={12}/>,
+  scenario:<Ico d="M3 6h18M3 12h12M3 18h8" sw={2}/>,
 };
 
 /* ── LOGO ── */
@@ -666,6 +681,7 @@ function Sidebar({view,setView}){
     {id:"investors",label:"Investors",  icon:ICONS.trend},
     {id:"team",     label:"Team",       icon:ICONS.team},
     {id:"capital",  label:"Capital",    icon:ICONS.capital},
+    {id:"scenario", label:"What-If",    icon:ICONS.scenario},
   ];
   return <div className="sidebar">
     <div className="sb-logo">
@@ -2167,6 +2183,257 @@ function CapitalView(){
   </div>;
 }
 
+/* ── SCENARIO VIEW ── */
+function ScenarioView(){
+  const [scenId,setScenId]=React.useState("base");
+  const allProgIds=PROGRAMS.map(p=>p.id);
+  const [selProgs,setSelProgs]=React.useState(allProgIds);
+
+  function toggleProg(id){
+    setSelProgs(prev=>
+      prev.includes(id)
+        ? prev.length>1 ? prev.filter(x=>x!==id) : prev  // keep at least one
+        : [...prev,id]
+    );
+  }
+
+  const shiftDays=(SCENARIO_SHIFTS[scenId]||0)*7;
+
+  function shiftDate(iso){
+    if(!iso) return iso;
+    const d=new Date(iso);
+    d.setDate(d.getDate()+shiftDays);
+    return d.toISOString().slice(0,10);
+  }
+
+  // Gather crit=YES tasks for selected programs
+  const critTasks=[];
+  PROGRAMS.forEach(prog=>{
+    if(!selProgs.includes(prog.id)) return;
+    const tasks=getGantt(prog.id).tasks||[];
+    tasks.filter(t=>t.crit).forEach(t=>{
+      critTasks.push({...t,
+        prog,
+        dispStart: scenId==="base"?t.start:shiftDate(t.start),
+        dispEnd:   scenId==="base"?t.end:shiftDate(t.end),
+      });
+    });
+  });
+
+  // Build timeline bounds — include BOTH scenario dates and base dates so ghost
+  // bars never clip outside the visible area (critical on upside where base > scenario)
+  const now=new Date();
+  const allDates=[
+    ...critTasks.map(t=>new Date(t.dispStart)),
+    ...critTasks.map(t=>new Date(t.dispEnd)),
+    ...critTasks.map(t=>new Date(t.start)),   // base start
+    ...critTasks.map(t=>new Date(t.end)),     // base end
+  ];
+  const minD=allDates.length?new Date(Math.min(...allDates)):now;
+  const maxD=allDates.length?new Date(Math.max(...allDates)):now;
+  // Add padding
+  minD.setMonth(minD.getMonth()-1);
+  maxD.setMonth(maxD.getMonth()+2);
+  const totalMs=maxD-minD;
+
+  function pct(iso){
+    const d=new Date(iso);
+    return Math.max(0,Math.min(100,((d-minD)/totalMs)*100));
+  }
+
+  // Month labels
+  const monthLabels=[];
+  const cursor=new Date(minD.getFullYear(),minD.getMonth(),1);
+  while(cursor<=maxD){
+    monthLabels.push({
+      label:cursor.toLocaleString("default",{month:"short",year:"2-digit"}),
+      pct:((cursor-minD)/totalMs)*100,
+    });
+    cursor.setMonth(cursor.getMonth()+1);
+  }
+
+  const scenColors={
+    upside:{bar:"#14956A",bg:"#E6F7F1",label:"Upside"},
+    base:{bar:"#0D7E8E",bg:"#E6F4F5",label:"Base Case"},
+    downside:{bar:"#C9851C",bg:"#FEF5E4",label:"Downside"},
+  };
+  const sc=scenColors[scenId];
+
+  // Group by program
+  const byProg={};
+  critTasks.forEach(t=>{
+    const k=t.prog.id;
+    if(!byProg[k]) byProg[k]={prog:t.prog,tasks:[]};
+    byProg[k].tasks.push(t);
+  });
+
+  return <div className="view-root">
+    <div className="view-header">
+      <div>
+        <div className="view-title">What-If · Scenario Planning</div>
+        <div style={{fontSize:11,color:"var(--t3)",marginTop:2}}>
+          Hypothetical — shifts critical path tasks by scenario. Base case = live CSV dates.
+        </div>
+      </div>
+    </div>
+
+    {/* Controls */}
+    <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:16,alignItems:"center"}}>
+      {/* Scenario selector */}
+      <div style={{display:"flex",gap:6}}>
+        {["upside","base","downside"].map(s=>{
+          const c=scenColors[s];
+          const active=scenId===s;
+          return <button key={s} onClick={()=>setScenId(s)} style={{
+            padding:"5px 14px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",
+            border:`1.5px solid ${active?c.bar:"var(--border)"}`,
+            background:active?c.bg:"var(--surface)",
+            color:active?c.bar:"var(--t2)",transition:"all .15s",
+          }}>{c.label}</button>;
+        })}
+      </div>
+      {/* Divider */}
+      <div style={{width:1,height:24,background:"var(--border)"}}/>
+      {/* Program selector */}
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        {PROGRAMS.map(p=>{
+          const on=selProgs.includes(p.id);
+          return <button key={p.id} onClick={()=>toggleProg(p.id)} style={{
+            padding:"5px 12px",borderRadius:20,fontSize:11,fontWeight:600,cursor:"pointer",
+            border:`1.5px solid ${on?"var(--current)":"var(--border)"}`,
+            background:on?"#E6F4F5":"var(--surface)",
+            color:on?"var(--current)":"var(--t3)",transition:"all .15s",
+          }}>{p.code}</button>;
+        })}
+      </div>
+      {/* Shift badge */}
+      {scenId!=="base"&&<div style={{
+        marginLeft:"auto",padding:"4px 10px",borderRadius:12,
+        background:sc.bg,color:sc.bar,fontSize:11,fontWeight:600,
+      }}>
+        {shiftDays>0?`+${shiftDays/7}w`:`${shiftDays/7}w`} on critical path
+      </div>}
+    </div>
+
+    {/* Gantt */}
+    <div className="card" style={{padding:0,overflow:"hidden"}}>
+      {/* Month header */}
+      <div style={{position:"relative",height:28,background:"var(--sand)",borderBottom:"1px solid var(--border)",overflow:"hidden"}}>
+        {monthLabels.map((m,i)=>(
+          <div key={i} style={{position:"absolute",left:`${m.pct}%`,fontSize:10,color:"var(--t3)",
+            paddingTop:7,paddingLeft:4,whiteSpace:"nowrap",fontFamily:"'JetBrains Mono',monospace"}}>
+            {m.label}
+          </div>
+        ))}
+        {/* Today line */}
+        <div style={{position:"absolute",left:`${pct(now.toISOString().slice(0,10))}%`,
+          top:0,bottom:0,width:1.5,background:"var(--coral)",opacity:.7}}/>
+      </div>
+
+      {/* Rows by program */}
+      {Object.values(byProg).length===0
+        ? <div style={{padding:24,textAlign:"center",color:"var(--t3)",fontSize:13}}>
+            No critical path tasks for selected programs.
+          </div>
+        : Object.values(byProg).map(({prog,tasks})=>(
+          <div key={prog.id}>
+            {/* Program header row */}
+            <div style={{padding:"6px 12px",background:"var(--sand)",borderBottom:"1px solid var(--border)",
+              fontSize:10,fontWeight:700,color:"var(--t3)",letterSpacing:.5,textTransform:"uppercase"}}>
+              {prog.code} · {prog.name}
+            </div>
+            {tasks.map((t,i)=>{
+              const l=pct(t.dispStart);
+              const r=pct(t.dispEnd);
+              const w=Math.max(r-l,1.5);
+              const past=new Date(t.dispEnd)<now;
+              const barColor=t.status==="at-risk"?"#C9851C":sc.bar;
+              return <div key={t.id} style={{
+                position:"relative",height:44,
+                borderBottom:i<tasks.length-1?"1px solid var(--border)":"none",
+                display:"flex",alignItems:"center",padding:"0 12px",
+              }}>
+                {/* Label — narrower on small screens via clamp */}
+                <div style={{width:"clamp(100px,28%,180px)",flexShrink:0,paddingRight:8,fontSize:12,fontWeight:500,
+                  color:"var(--t1)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                  {t.name}
+                </div>
+                {/* Timeline area */}
+                <div style={{flex:1,position:"relative",height:"100%",overflow:"hidden"}}>
+                  {/* Today line */}
+                  <div style={{position:"absolute",left:`${pct(now.toISOString().slice(0,10))}%`,
+                    top:0,bottom:0,width:1,background:"var(--coral)",opacity:.35}}/>
+                  {/* Bar */}
+                  {/* Base ghost bar — sibling in timeline, shown in non-base scenarios */}
+                  {scenId!=="base"&&(()=>{
+                    const gl=pct(t.start);
+                    const gw=Math.max(pct(t.end)-gl,1.5);
+                    return <div style={{
+                      position:"absolute",
+                      left:`${gl}%`,width:`${gw}%`,
+                      top:"50%",transform:"translateY(-50%)",
+                      height:14,borderRadius:4,
+                      background:"var(--t4)",opacity:.6,
+                      border:"1px dashed var(--t3)",
+                    }}/>;
+                  })()}
+                  {/* Scenario bar */}
+                  <div style={{
+                    position:"absolute",
+                    left:`${l}%`,width:`${w}%`,
+                    top:"50%",transform:"translateY(-50%)",
+                    height:14,borderRadius:4,
+                    background:barColor,opacity:.85,
+                  }}/>
+                  {/* End date label — placed after the rightmost of (scenario bar, ghost bar) */}
+                  {(()=>{
+                    const gl=pct(t.start);
+                    const gw=Math.max(pct(t.end)-gl,1.5);
+                    const rightEdge=Math.max(l+w, gl+gw);
+                    const labelLeft=Math.min(rightEdge+0.5,93);
+                    return <div style={{position:"absolute",left:`${labelLeft}%`,
+                      top:"50%",transform:"translateY(-50%)",
+                      fontSize:9.5,color:past?"var(--coral)":"var(--t3)",
+                      whiteSpace:"nowrap",fontFamily:"'JetBrains Mono',monospace",
+                      pointerEvents:"none"}}>
+                      {new Date(t.dispEnd).toLocaleString("default",{month:"short",year:"2-digit"})}
+                    </div>;
+                  })()}
+                </div>
+                {/* Status chip — hidden below 520px to free timeline space */}
+                <div style={{width:72,flexShrink:0,textAlign:"right",display:"var(--chip-display,block)"}}>
+                  <span style={{fontSize:9,fontWeight:600,padding:"2px 6px",borderRadius:10,
+                    background:t.status==="at-risk"?"#FEF5E4":"var(--sand)",
+                    color:t.status==="at-risk"?"#C9851C":"var(--t3)"}}>
+                    {t.status==="at-risk"?"At Risk":t.status==="not-started"?"Not Started":
+                     t.status==="on-track"?"On Track":"Complete"}
+                  </span>
+                </div>
+              </div>;
+            })}
+          </div>
+        ))
+      }
+    </div>
+
+    {/* Legend */}
+    {scenId!=="base"&&<div style={{display:"flex",gap:16,marginTop:12,fontSize:11,color:"var(--t3)",flexWrap:"wrap"}}>
+      <div style={{display:"flex",alignItems:"center",gap:5}}>
+        <div style={{width:24,height:6,borderRadius:3,background:sc.bar,opacity:.85}}/>
+        <span>{sc.label} dates</span>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:5}}>
+        <div style={{width:24,height:6,borderRadius:3,background:"var(--t4)",border:"1px dashed var(--t3)"}}/>
+        <span>Base case (ghost)</span>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:5}}>
+        <div style={{width:10,height:10,borderRadius:"50%",background:"var(--coral)"}}/>
+        <span>Today</span>
+      </div>
+    </div>}
+  </div>;
+}
+
 /* ── MOBILE TAB BAR ── */
 function MobileTabBar({view,setView}){
   const alertCount=VENDORS.filter(vendorNeedsAction).length;
@@ -2177,6 +2444,7 @@ function MobileTabBar({view,setView}){
     {id:"investors",label:"Investors",  icon:ICONS.trend},
     {id:"team",     label:"Team",       icon:ICONS.team},
     {id:"capital",  label:"Capital",    icon:ICONS.capital},
+    {id:"scenario", label:"What-If",    icon:ICONS.scenario},
   ];
   return <div className="mob-tabs">
     <div className="mob-tabs-inner">
@@ -2414,7 +2682,7 @@ function App(){
   if(loadError) return <ErrorScreen error={loadError} onRetry={doLoad}/>;
 
   const views={home:HomeView,programs:ProgramsView,vendors:VendorsView,
-    investors:InvestorsView,team:TeamView,capital:CapitalView};
+    investors:InvestorsView,team:TeamView,capital:CapitalView,scenario:ScenarioView};
   const View=views[view]||HomeView;
   return <div className="app">
     <Sidebar view={view} setView={setView}/>
