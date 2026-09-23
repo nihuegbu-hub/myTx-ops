@@ -1220,21 +1220,28 @@ function GanttChart2({mode, onMsClick, selMs}){
             return null;
           })}
 
-          {/* ── gate lines ── */}
-          {["p1","p2"].map(pid=>
-            GANTT[pid].gates.map(g=>{
+          {/* ── gate lines (staggered to avoid label collisions) ── */}
+          {(()=>{
+            const allGates=[...GANTT.p1.gates.map(g=>({...g,pid:"p1"})),...GANTT.p2.gates.map(g=>({...g,pid:"p2"}))];
+            allGates.sort((a,b)=>a.date<b.date?-1:1);
+            let lastX=-999,row=0;
+            return allGates.map(g=>{
               const gx=toX(g.date);
-              return <g key={pid+g.date}>
+              const lblW=g.label.length*5.4+10;
+              if(gx<lastX+lblW+6){row=row===0?1:0;}else{row=0;}
+              lastX=gx;
+              const yOff=row*14;
+              return <g key={g.pid+g.date}>
                 <line x1={gx} y1={AH} x2={gx} y2={SVG_H}
                   stroke="var(--current)" strokeWidth={1} strokeDasharray="6,3" opacity={0.35}/>
-                <rect x={gx+3} y={AH+3} width={g.label.length*5.2+8} height={12} rx={3}
+                <rect x={gx+3} y={AH+3+yOff} width={lblW} height={12} rx={3}
                   fill="var(--current)" opacity={0.08}/>
-                <text x={gx+5} y={AH+12}
+                <text x={gx+5} y={AH+12+yOff}
                   style={{fontSize:8,fontWeight:700,fill:"var(--current)",
                     fontFamily:"'DM Sans',sans-serif"}}>{g.label}</text>
               </g>;
-            })
-          )}
+            });
+          })()}
 
           {/* ── today line ── */}
           {(()=>{const tx=toX("2026-09-22");return<g>
@@ -2058,10 +2065,10 @@ function toInvestors(rows){
   return rows.filter(r=>r.id).map(r=>({
     id:r.id,
     name:r.fund||r.name||r.id,
-    tier:r.tier||"Prospective",
+    tier:r.stage||r.tier||"Prospective",
     type:r.type||"VC",
     lead:r.contact||"",
-    status:r.status||"not-contacted",
+    status:r.stage||r.status||"not-contacted",
     lastContact:r.lastContact||"—",
     priority:+r.priority||3,
     relationship:r.relationship||"",
