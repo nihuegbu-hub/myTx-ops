@@ -1037,7 +1037,7 @@ function GanttChart2({mode, selProg="both", onMsClick, selMs}){
     else if(r.type==="phase") y+=32;
     else y+=RH;
   });
-  const SVG_H=y+12;
+  const SVG_H=y+12+(MODE_INVESTOR?80:0); // extra height for investor milestone labels
 
   /* ── status helpers ── */
   function barFill(t,prog){
@@ -1290,12 +1290,13 @@ function GanttChart2({mode, selProg="both", onMsClick, selMs}){
           {(()=>{
             const allGates=[...activePids.flatMap(pid=>getGantt(pid).gates.map(g=>({...g,pid})))];
             allGates.sort((a,b)=>a.date<b.date?-1:1);
-            let lastX=-999,row=0;
+            const gTrackRight=[-9999,-9999,-9999]; // 3-row greedy stagger
             return allGates.map(g=>{
               const gx=toX(g.date);
               const lblW=g.label.length*5.4+10;
-              if(gx<lastX+lblW+6){row=row===0?1:0;}else{row=0;}
-              lastX=gx;
+              let row=2; // fallback
+              for(let r=0;r<3;r++){if(gx>gTrackRight[r]+6){row=r;break;}}
+              gTrackRight[row]=gx+lblW;
               const yOff=row*14;
               return <g key={g.pid+g.date}>
                 <line x1={gx} y1={AH} x2={gx} y2={SVG_H}
@@ -1341,40 +1342,72 @@ function GanttChart2({mode, selProg="both", onMsClick, selMs}){
             const progRowIdx=allRows.findIndex(r=>r.type==="prog"&&r.pid===pid);
             const phaseCount=gd.phases.length;
             const baseY=rowY[progRowIdx]||AH;
-            const afterPhasesY=baseY+PH+phaseCount*32+8;
-            // Build investor milestones from milestone=YES tasks (dynamic) + any hardcoded fallbacks
+            const afterPhasesY=baseY+PH+phaseCount*32+12;
             const laneTypeMap={reg:"regulatory",clinical:"clinical",pub_conf:"science",
               tox:"regulatory",cmc:"investor",invivo:"science",invivo2:"science",
               pharm:"science",disc:"science",abdisc:"science",leadopt:"science",
               tox2:"regulatory",cmc2:"investor",reg2:"regulatory"};
+
+            // milestone=YES → Investor Gantt; milestone=NO → Operator only
             const dynMilestones=(gd.tasks||[])
-              // Investor Gantt milestone logic:
-              // • pub_conf + milestone=YES + status=complete → accomplishment, show in Investor
-              // • non-pub_conf + milestone=YES → strategic event, always show in Investor
-              // • pub_conf + milestone=YES + status≠complete → prep work, Operator only
-              .filter(t=>t.milestone&&(
-                t.lane!=="pub_conf"          // non-pub_conf milestones always appear
-                ||(t.status==="complete")    // pub_conf only when accomplished
-              ))
+              .filter(t=>t.milestone)
               .map(t=>({date:t.end,name:t.name,type:laneTypeMap[t.lane]||"investor"}));
-            const invMs=dynMilestones.length>0?dynMilestones:gd.invMilestones;
+            const rawMs=dynMilestones.length>0?dynMilestones:gd.invMilestones;
+
+            // Sort chronologically for consistent track assignment
+            const invMs=[...rawMs].sort((a,b)=>a.date<b.date?-1:1);
+
+            // 3-track greedy label placement — avoids horizontal overlap per track
+            const NTRACK=3;
+            const trackRight=Array(NTRACK).fill(-9999);
+            const trackOf=invMs.map(m=>{
+              const mx=toX(m.date);
+              const nm=m.name.length>22?m.name.slice(0,21)+"…":m.name;
+              const lw=nm.length*5.4+14;
+              for(let tr=0;tr<NTRACK;tr++){
+                if(mx>trackRight[tr]+5){trackRight[tr]=mx+lw;return tr;}
+              }
+              trackRight[0]=Math.max(trackRight[0],toX(m.date)+lw);
+              return 0;
+            });
+
+            // Stagger diamonds that land on the same X (within 8px)
+            const mxArr=invMs.map(m=>toX(m.date));
+            const diaOff=invMs.map((_,i)=>{
+              let n=0;
+              for(let j=0;j<i;j++){if(Math.abs(mxArr[j]-mxArr[i])<8)n++;}
+              return n*14;
+            });
+
             return invMs.map((m,mi)=>{
               const mx=toX(m.date);
               const mc=MS_COLORS[m.type]||MS_COLORS.investor;
-              const lineEndY=afterPhasesY+mi*16+6;
-              return <g key={pid+m.date}
+              const diaY=baseY+PH+diaOff[mi];
+              const track=trackOf[mi];
+              const lineEndY=afterPhasesY+track*16+6;
+              const nm=m.name.length>22?m.name.slice(0,21)+"…":m.name;
+              const lw=nm.length*5.4+14;
+              // Flip label left when near right edge of chart
+              const goLeft=mx+lw>LW+CW-12;
+              return <g key={pid+m.date+mi}
                 onMouseEnter={e=>showTip(e,{name:m.name,isMilestone:true,type:m.type,date:m.date})}
                 onMouseLeave={()=>setTip(null)}>
-                <line x1={mx} y1={baseY+PH} x2={mx} y2={lineEndY-2}
-                  stroke={mc} strokeWidth={1} strokeDasharray="3,2" opacity={0.4}/>
-                <polygon points={`${mx},${baseY+PH-7} ${mx+6},${baseY+PH} ${mx},${baseY+PH+7} ${mx-6},${baseY+PH}`}
+                <line x1={mx} y1={diaY+7} x2={mx} y2={lineEndY-3}
+                  stroke={mc} strokeWidth={1} strokeDasharray="3,2" opacity={0.35}/>
+                <polygon points={`${mx},${diaY-7} ${mx+6},${diaY} ${mx},${diaY+7} ${mx-6},${diaY}`}
                   fill={mc} opacity={0.88}/>
-                <rect x={mx+2} y={lineEndY-4} width={m.name.length*5.6+8} height={13} rx={3}
-                  fill={mc} opacity={0.1}/>
-                <text x={mx+4} y={lineEndY+5}
-                  style={{fontSize:8.5,fill:mc,fontWeight:600,fontFamily:"'DM Sans',sans-serif"}}>
-                  {m.name}
-                </text>
+                {goLeft
+                  ?<React.Fragment>
+                    <rect x={mx-lw-2} y={lineEndY-4} width={lw} height={13} rx={3} fill={mc} opacity={0.1}/>
+                    <text x={mx-5} y={lineEndY+5} textAnchor="end"
+                      style={{fontSize:8.5,fill:mc,fontWeight:600,fontFamily:"'DM Sans',sans-serif"}}>{nm}</text>
+                  </React.Fragment>
+                  :<React.Fragment>
+                    <rect x={mx+2} y={lineEndY-4} width={lw} height={13} rx={3} fill={mc} opacity={0.1}/>
+                    <text x={mx+4} y={lineEndY+5}
+                      style={{fontSize:8.5,fill:mc,fontWeight:600,fontFamily:"'DM Sans',sans-serif"}}>{nm}</text>
+                  </React.Fragment>
+                }
               </g>;
             });
           })}
