@@ -1663,7 +1663,7 @@ function VendorsView(){
                   <td><span className="sdot"><span className="dot" style={{background:VS[v.status]?.dot}}/>{VS[v.status]?.label}</span></td>
                   <td><Chip {...VR[v.risk]} small/></td>
                   <td>
-                    <span className="mono" style={{fontSize:11,color:"var(--t2)"}}>{v.deadline}</span>
+                    <span className="mono" style={{fontSize:11,color:"var(--t2)"}}>{v.deadline||"—"}</span>
                     <span className="mono" style={{fontSize:10,color:wksColor,display:"block"}}>{wksTxt}</span>
                   </td>
                   <td><span className="mono" style={{fontSize:12}}>${v.costExt}K</span></td>
@@ -2028,6 +2028,13 @@ function toVendors(rows){
     note:r.note||"",
     riskNote:r.riskNote||"",
     lastUpdated:r.lastUpdated||"",
+    deadline:(()=>{
+      if(r.dueDate)return r.dueDate; // prefer explicit sheet value
+      const wl=r.weeksLeft===""?99:+r.weeksLeft;
+      if(wl===99||wl<0)return "";
+      const d=new Date();d.setDate(d.getDate()+wl*7);
+      return d.toLocaleDateString("en-US",{month:"short",day:"numeric"});
+    })(),
   }));
 }
 
