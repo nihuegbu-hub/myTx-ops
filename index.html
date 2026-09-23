@@ -2087,55 +2087,7 @@ function CapitalView(){
   const pct=Math.min((rw/total)*100,100);
   const seriesBPct=Math.min(((total-CAPITAL.seriesBMonthsAway)/total)*100,100);
 
-  return <div>
-    <div className="view-head">
-      <div className="view-title">Capital & Scenarios</div>
-      <div className="view-sub">Runway, financing outlook, and development scenario planning</div>
-    </div>
-    {/* Capital tiles */}
-    <div className="g3" style={{marginBottom:16}}>
-      {[
-        {label:"Cash on Hand",val:`$${CAPITAL.cashOnHand}M`,sub:"As of Sep 2026",color:"var(--t1)"},
-        {label:"Monthly Burn",val:`$${CAPITAL.monthlyBurn}M`,sub:"Blended rate",color:"var(--amber)"},
-        {label:"Runway",val:`${rw} months`,sub:`Series B target: ${CAPITAL.seriesBTarget}`,color:"var(--current)"},
-      ].map(c=>(
-        <div key={c.label} className="card" style={{padding:"14px 18px"}}>
-          <div style={{fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.08em",color:"var(--t3)",marginBottom:6}}>{c.label}</div>
-          <div className="mono" style={{fontSize:22,fontWeight:500,color:c.color,lineHeight:1}}>{c.val}</div>
-          <div style={{fontSize:11,color:"var(--t3)",marginTop:4}}>{c.sub}</div>
-        </div>
-      ))}
-    </div>
-    {/* Runway visual */}
-    <div className="card" style={{marginBottom:16,padding:"16px 20px"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:8}}>
-        <div style={{fontSize:12,fontWeight:500,color:"var(--t2)"}}>Runway Timeline</div>
-        <div style={{fontSize:11,color:"var(--t3)"}}>Series A close {CAPITAL.seriesAClose} · Series B target {CAPITAL.seriesBTarget}</div>
-      </div>
-      <div className="rw-track" style={{position:"relative",marginBottom:6}}>
-        <div className="rw-fill" style={{width:`${pct}%`,background:`${pct<50?"var(--coral)":pct<75?"var(--amber)":"var(--current)"}`}}/>
-        <div className="rw-marker" style={{left:`${seriesBPct}%`}} title={`Series B target: ${CAPITAL.seriesBTarget}`}/>
-      </div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <div style={{fontSize:11,color:"var(--t3)"}}>
-          <span className="mono" style={{color:"var(--current)",fontWeight:500}}>{rw} mo</span> remaining
-        </div>
-        <div style={{display:"flex",gap:10,fontSize:11,color:"var(--t3)"}}>
-          <span><span style={{display:"inline-block",width:8,height:2,background:"var(--coral)",borderRadius:1,verticalAlign:"middle",marginRight:4}}/>Series B target</span>
-        </div>
-      </div>
-    </div>
-    {/* Scenario tabs */}
-    <div style={{display:"flex",gap:8,marginBottom:14}}>
-      {SCENARIOS.map(sc=>(
-        <button key={sc.id} className={`scen-tab${scen===sc.id?" active":""}`}
-          onClick={()=>setScen(sc.id)}
-          style={scen===sc.id?{background:sc.color,borderColor:sc.color}:{}}>
-          {sc.label}
-        </button>
-      ))}
-    </div>
-  // Programme selector state — shared with the embedded Gantt below
+  // Program selector state (shared with embedded Gantt below)
   const allProgIds=PROGRAMS.map(p=>p.id);
   const [selProgs,setSelProgs]=useState(allProgIds);
   function toggleProg(id){
@@ -2144,14 +2096,14 @@ function CapitalView(){
       : [...prev,id]);
   }
 
-  // Gantt shift helpers (reuse SCENARIO_SHIFTS; rename pct → gpct to avoid clash)
+  // Gantt helpers — gpct avoids collision with runway pct variable
   const shiftDays=(SCENARIO_SHIFTS[scen]||0)*7;
   function shiftDate(iso){
     if(!iso) return iso;
     const d=new Date(iso); d.setDate(d.getDate()+shiftDays); return d.toISOString().slice(0,10);
   }
 
-  // Build crit tasks for selected programs with scenario dates applied
+  // Gather crit=YES tasks for selected programs with scenario shift applied
   const critTasks=[];
   PROGRAMS.forEach(prog=>{
     if(!selProgs.includes(prog.id)) return;
@@ -2163,7 +2115,7 @@ function CapitalView(){
     });
   });
 
-  // Timeline bounds — include both scenario AND base dates so ghost bars never clip
+  // Timeline bounds: include both scenario AND base dates so ghost bars never clip
   const nowD=new Date();
   const allDts=[
     ...critTasks.map(t=>new Date(t.dispStart)),
@@ -2178,7 +2130,7 @@ function CapitalView(){
   const totalMs=maxDt-minDt;
   function gpct(iso){return Math.max(0,Math.min(100,((new Date(iso)-minDt)/totalMs)*100));}
 
-  // Adaptive month labels — only render when spaced ≥5% apart to prevent crowding
+  // Adaptive month labels — skip labels closer than 5% to prevent crowding
   const monthLabels=[];
   let lastLabelPct=-100;
   const cur=new Date(minDt.getFullYear(),minDt.getMonth(),1);
@@ -2191,7 +2143,7 @@ function CapitalView(){
     cur.setMonth(cur.getMonth()+1);
   }
 
-  // Group crit tasks by program for the Gantt
+  // Group crit tasks by program
   const byProg={};
   critTasks.forEach(t=>{
     if(!byProg[t.prog.id]) byProg[t.prog.id]={prog:t.prog,tasks:[]};
@@ -2236,7 +2188,7 @@ function CapitalView(){
         </div>
       </div>
     </div>
-    {/* Scenario selector */}
+    {/* Scenario tabs */}
     <div style={{display:"flex",gap:8,marginBottom:14}}>
       {SCENARIOS.map(sc=>(
         <button key={sc.id} className={`scen-tab${scen===sc.id?" active":""}`}
@@ -2286,7 +2238,7 @@ function CapitalView(){
       </div>
     </div>
 
-    {/* ── TIMELINE IMPACT GANTT ── */}
+    {/* ── CRITICAL PATH TIMELINE IMPACT ── */}
     <div style={{marginTop:20}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",
         flexWrap:"wrap",gap:10,marginBottom:12}}>
@@ -2298,7 +2250,7 @@ function CapitalView(){
               : `Hypothetical · critical path shifted ${shiftDays>0?"+":""}${shiftDays/7}w from base`}
           </div>
         </div>
-        {/* Program pills — auto-generated, future programs appear automatically */}
+        {/* Program pills — auto-generated; future programs appear automatically */}
         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
           {PROGRAMS.map(p=>{
             const on=selProgs.includes(p.id);
@@ -2313,7 +2265,7 @@ function CapitalView(){
       </div>
 
       <div className="card" style={{padding:0,overflow:"hidden"}}>
-        {/* Month header — adaptive labels only (≥5% gap) */}
+        {/* Month header — adaptive labels only (≥5% gap prevents crowding) */}
         <div style={{position:"relative",height:26,background:"var(--sand)",
           borderBottom:"1px solid var(--border)",overflow:"hidden"}}>
           {monthLabels.map((m,i)=>(
@@ -2323,7 +2275,7 @@ function CapitalView(){
               {m.label}
             </div>
           ))}
-          {/* Today line */}
+          {/* Today line in header */}
           <div style={{position:"absolute",
             left:`${gpct(nowD.toISOString().slice(0,10))}%`,
             top:0,bottom:0,width:1.5,background:"var(--coral)",opacity:.7}}/>
@@ -2349,7 +2301,6 @@ function CapitalView(){
                 const gw=Math.max(gpct(t.end)-gl,1.5);
                 const barColor=t.status==="at-risk"?"#C9851C":s.color;
                 const pastDue=new Date(t.dispEnd)<nowD;
-                // End date label: clear rightmost edge of both bars
                 const rightEdge=Math.max(l+w, gl+gw);
                 const labelLeft=Math.min(rightEdge+0.5,92);
                 return <div key={t.id} style={{
@@ -2363,13 +2314,13 @@ function CapitalView(){
                     whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
                     {t.name}
                   </div>
-                  {/* Timeline */}
+                  {/* Timeline area */}
                   <div style={{flex:1,position:"relative",height:"100%",overflow:"hidden"}}>
                     {/* Today line */}
                     <div style={{position:"absolute",
                       left:`${gpct(nowD.toISOString().slice(0,10))}%`,
                       top:0,bottom:0,width:1,background:"var(--coral)",opacity:.3}}/>
-                    {/* Ghost bar (base) — only in non-base scenarios */}
+                    {/* Ghost bar (base case) — sibling of scenario bar */}
                     {scen!=="base"&&<div style={{
                       position:"absolute",left:`${gl}%`,width:`${gw}%`,
                       top:"50%",transform:"translateY(-50%)",
@@ -2384,7 +2335,7 @@ function CapitalView(){
                       height:12,borderRadius:3,
                       background:barColor,opacity:.88,
                     }}/>
-                    {/* End date label */}
+                    {/* End date label — clear rightmost edge of both bars */}
                     <div style={{position:"absolute",left:`${labelLeft}%`,
                       top:"50%",transform:"translateY(-50%)",
                       fontSize:9.5,color:pastDue?"var(--coral)":"var(--t3)",
