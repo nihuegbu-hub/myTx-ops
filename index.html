@@ -1105,7 +1105,7 @@ function GanttChart2({mode, selProg="both", onMsClick, selMs}){
     }catch(e){}
     return new Date("2028-04-01"); // fallback
   })();
-  const TODAY=new Date("2026-09-22");
+  const TODAY=new Date();
 
   const daysRS_PC=(PC-RS)/864e5;
   const daysPC_FC=(FC-PC)/864e5;
@@ -1117,7 +1117,7 @@ function GanttChart2({mode, selProg="both", onMsClick, selMs}){
   const CW=PW+AW+FW;
 
   function toX(s){
-    const d=new Date(s.length===7?s+"-01":s);
+    const d=s instanceof Date?s:new Date(s.length===7?s+"-01":s);
     const t=d.getTime();
     if(t<=PC.getTime()){
       return LW+Math.round(((t-RS.getTime())/(PC.getTime()-RS.getTime()))*PW);
@@ -1450,7 +1450,7 @@ function GanttChart2({mode, selProg="both", onMsClick, selMs}){
           })()}
 
           {/* ── today line ── */}
-          {(()=>{const tx=toX("2026-09-22");return<g>
+          {(()=>{const tx=toX(TODAY);return<g>
             <line x1={tx} y1={AH} x2={tx} y2={SVG_H}
               stroke="#EF4444" strokeWidth={1.5} strokeDasharray="5,3" opacity={0.65}/>
             <rect x={tx-13} y={AH-12} width={26} height={12} rx={3} fill="#EF4444" opacity={0.9}/>
