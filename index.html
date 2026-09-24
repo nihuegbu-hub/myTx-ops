@@ -1053,6 +1053,7 @@ function GanttChart2({mode, selProg="both", onMsClick, selMs}){
       allRows.push({type:"prog",pid,prog,gd});
       if(MODE_INVESTOR){
         gd.phases.forEach(ph=>allRows.push({type:"phase",phase:ph,pid,prog,gd}));
+        allRows.push({type:"inv-zone",pid,prog,gd}); // label zone for milestone diamonds
       } else {
         gd.lanes.forEach(lane=>{
           allRows.push({type:"lane",lane,pid,prog});
@@ -1073,9 +1074,10 @@ function GanttChart2({mode, selProg="both", onMsClick, selMs}){
     else if(r.type==="prog") y+=PH;
     else if(r.type==="lane") y+=LH;
     else if(r.type==="phase") y+=32;
+    else if(r.type==="inv-zone") y+=110;
     else y+=RH;
   });
-  const SVG_H=y+12+(MODE_INVESTOR?80:0); // extra height for investor milestone labels
+  const SVG_H=y+12; // milestone zone height now included in inv-zone rows
 
   /* ── status helpers ── */
   function barFill(t,prog){
@@ -1375,12 +1377,23 @@ function GanttChart2({mode, selProg="both", onMsClick, selMs}){
           )}
 
           {/* ── investor milestones ── */}
+          {/* ── investor program divider bands ── */}
+          {MODE_INVESTOR&&activePids.map(pid=>{
+            const zoneIdx=allRows.findIndex(r=>r.type==="inv-zone"&&r.pid===pid);
+            const prog=PROGRAMS.find(p=>p.id===pid);
+            if(zoneIdx<0) return null;
+            const zY=rowY[zoneIdx];
+            return <rect key={"div"+pid} x={LW} y={zY} width={CW} height={1}
+              stroke={prog?.color||"#888"} strokeWidth={1} opacity={0.25} fill="none"/>;
+          })}
+
+          {/* ── investor milestones ── */}
           {MODE_INVESTOR&&activePids.map(pid=>{
             const gd=getGantt(pid);
             const progRowIdx=allRows.findIndex(r=>r.type==="prog"&&r.pid===pid);
-            const phaseCount=gd.phases.length;
+            const zoneIdx=allRows.findIndex(r=>r.type==="inv-zone"&&r.pid===pid);
             const baseY=rowY[progRowIdx]||AH;
-            const afterPhasesY=baseY+PH+phaseCount*32+12;
+            const afterPhasesY=zoneIdx>=0?(rowY[zoneIdx]+8):(baseY+PH+gd.phases.length*32+12);
             const laneTypeMap={reg:"regulatory",clinical:"clinical",pub_conf:"science",
               tox:"regulatory",cmc:"investor",invivo:"science",invivo2:"science",
               pharm:"science",disc:"science",abdisc:"science",leadopt:"science",
@@ -1420,9 +1433,9 @@ function GanttChart2({mode, selProg="both", onMsClick, selMs}){
             return invMs.map((m,mi)=>{
               const mx=toX(m.date);
               const mc=MS_COLORS[m.type]||MS_COLORS.investor;
-              const diaY=baseY+PH+diaOff[mi];
+              const diaY=afterPhasesY+10+diaOff[mi];
               const track=trackOf[mi];
-              const lineEndY=afterPhasesY+track*16+6;
+              const lineEndY=afterPhasesY+36+track*22+6;
               const nm=m.name.length>22?m.name.slice(0,21)+"…":m.name;
               const lw=nm.length*5.4+14;
               // Flip label left when near right edge of chart
@@ -1464,6 +1477,13 @@ function GanttChart2({mode, selProg="both", onMsClick, selMs}){
               fill:"var(--t3)",fontFamily:"'DM Sans',sans-serif"}}>
             {row.ind}
           </text>;
+          if(row.type==="inv-zone") return <g key={"iz"+ri}>
+            <text x={8} y={ry+16}
+              style={{fontSize:8,fontWeight:600,fill:"var(--t3)",textTransform:"uppercase",
+                letterSpacing:"0.1em",fontFamily:"'DM Sans',sans-serif"}}>
+              {`YEM-${String(parseInt(row.pid.replace(/\D/g,""),10)).padStart(3,"0")} milestones`}
+            </text>
+          </g>;
           if(row.type==="prog") return <text key={"ptxt"+ri} x={8} y={ry+PH/2+4}
             style={{fontSize:11,fontWeight:700,fill:row.prog.color,fontFamily:"'DM Sans',sans-serif"}}>
             {row.prog.name} · {row.prog.code}
