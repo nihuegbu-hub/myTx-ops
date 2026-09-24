@@ -1378,13 +1378,15 @@ function GanttChart2({mode, selProg="both", onMsClick, selMs}){
 
           {/* ── investor milestones ── */}
           {/* ── investor program divider bands ── */}
-          {MODE_INVESTOR&&activePids.map(pid=>{
-            const zoneIdx=allRows.findIndex(r=>r.type==="inv-zone"&&r.pid===pid);
-            const prog=PROGRAMS.find(p=>p.id===pid);
-            if(zoneIdx<0) return null;
-            const zY=rowY[zoneIdx];
-            return <rect key={"div"+pid} x={LW} y={zY} width={CW} height={1}
-              stroke={prog?.color||"#888"} strokeWidth={1} opacity={0.25} fill="none"/>;
+          {MODE_INVESTOR&&activePids.map((pid,pi)=>{
+            if(pi===0) return null; // no divider before first program
+            const progIdx=allRows.findIndex(r=>r.type==="prog"&&r.pid===pid);
+            if(progIdx<0) return null;
+            const dY=rowY[progIdx]-10;
+            return <g key={"div"+pid}>
+              <line x1={LW} y1={dY} x2={LW+CW} y2={dY}
+                stroke="var(--border)" strokeWidth={1} opacity={0.5}/>
+            </g>;
           })}
 
           {/* ── investor milestones ── */}
@@ -1477,13 +1479,7 @@ function GanttChart2({mode, selProg="both", onMsClick, selMs}){
               fill:"var(--t3)",fontFamily:"'DM Sans',sans-serif"}}>
             {row.ind}
           </text>;
-          if(row.type==="inv-zone") return <g key={"iz"+ri}>
-            <text x={8} y={ry+16}
-              style={{fontSize:8,fontWeight:600,fill:"var(--t3)",textTransform:"uppercase",
-                letterSpacing:"0.1em",fontFamily:"'DM Sans',sans-serif"}}>
-              {`YEM-${String(parseInt(row.pid.replace(/\D/g,""),10)).padStart(3,"0")} milestones`}
-            </text>
-          </g>;
+          if(row.type==="inv-zone") return null;
           if(row.type==="prog") return <text key={"ptxt"+ri} x={8} y={ry+PH/2+4}
             style={{fontSize:11,fontWeight:700,fill:row.prog.color,fontFamily:"'DM Sans',sans-serif"}}>
             {row.prog.name} · {row.prog.code}
