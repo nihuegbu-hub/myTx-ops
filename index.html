@@ -2710,7 +2710,7 @@ function toCapital(rows){
     // unknown keys are silently ignored (may be CFO notes / extra columns)
   });
   // Warn about missing critical keys so misconfiguration is visible in console
-  const critKeys=["cashOnHand","monthlyBurn","runwayMonths","seriesBTarget"];
+    const critKeys=["cashOnHand","monthlyBurn","runwayMonths"];  // seriesBTarget is display-only; omit from hard warning
   obj._missingKeys=critKeys.filter(k=>!obj[k]||obj[k]==="—");
   if(obj._missingKeys.length){
     console.warn("[YemayaOps] Financials tab missing or zero for:",obj._missingKeys.join(", "),
