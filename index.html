@@ -594,8 +594,10 @@ const HEALTH=[
 ];
 const healthFor=p=>HEALTH.find(h=>p<=h.max);
 
-const CAPITAL={cashOnHand:30.5,monthlyBurn:1.2,runwayMonths:26,
-  totalRunway:30,seriesAClose:"Sep 2026",seriesBTarget:"Q1 2028",seriesBMonthsAway:16};
+// CAPITAL is populated from the "Financials" Google Sheet tab (toCapital / loadData)
+let CAPITAL={cashOnHand:0,monthlyBurn:0,runwayMonths:0,
+  totalRunway:0,seriesAClose:"—",seriesBTarget:"—",seriesBMonthsAway:0,
+  totalRaised:0,useOfProceeds:[],asOfLabel:"",lastUpdated:""};
 
 /* ── safe GANTT accessor — returns stub for any pid not yet hardcoded ── */
 function getGantt(pid){
@@ -2241,7 +2243,7 @@ function CapitalView(){
     {/* Capital tiles */}
     <div className="g3" style={{marginBottom:16}}>
       {[
-        {label:"Cash on Hand",val:`$${CAPITAL.cashOnHand}M`,sub:"As of Sep 2026",color:"var(--t1)"},
+        {label:"Cash on Hand",val:`$${CAPITAL.cashOnHand}M`,sub:CAPITAL.asOfLabel?`As of ${CAPITAL.asOfLabel}`:"As of —",color:"var(--t1)"},
         {label:"Monthly Burn",val:`$${CAPITAL.monthlyBurn}M`,sub:"Blended rate",color:"var(--amber)"},
         {label:"Runway",val:`${rw} months`,sub:`Series B target: ${CAPITAL.seriesBTarget}`,color:"var(--current)"},
       ].map(c=>(
@@ -2617,8 +2619,57 @@ function toPrograms(rows){
 }
 
 
+
+function toCapital(rows){
+  // Expects a key/value layout: column A = key, column B = value
+  // Supported keys (case-insensitive, trimmed):
+  //   cashOnHand        numeric  e.g. 30.5  (in $M)
+  //   monthlyBurn       numeric  e.g. 1.2   (in $M)
+  //   runwayMonths      numeric  e.g. 26
+  //   totalRunway       numeric  e.g. 30    (months from seriesA to seriesB target)
+  //   seriesAClose      string   e.g. "Sep 2026"
+  //   seriesBTarget     string   e.g. "Q1 2028"
+  //   seriesBMonthsAway numeric  e.g. 16
+  //   totalRaised       numeric  e.g. 42    (in $M)
+  //   asOfLabel         string   e.g. "Sep 2026"  (display label for "As of" date)
+  //   lastUpdated       string   e.g. "2026-09-01" (ISO date CFO last updated)
+  //   proceeds_*        string   use of proceeds rows, e.g.:
+  //                              key="proceeds_R&D", value="45" (percent)
+  const numKeys=["cashOnHand","monthlyBurn","runwayMonths","totalRunway",
+                 "seriesBMonthsAway","totalRaised"];
+  const obj={cashOnHand:0,monthlyBurn:0,runwayMonths:0,totalRunway:0,
+             seriesAClose:"—",seriesBTarget:"—",seriesBMonthsAway:0,
+             totalRaised:0,useOfProceeds:[],asOfLabel:"",lastUpdated:""};
+  rows.forEach(r=>{
+    const k=(r.key||"").trim();
+    const v=(r.value||"").trim();
+    if(!k||!v) return;
+    const kl=k.toLowerCase().replace(/\s+/g,"");
+    if(kl.startsWith("proceeds_")){
+      const label=k.slice("proceeds_".length).trim();
+      obj.useOfProceeds.push({label,pct:+v||0});
+    } else if(numKeys.map(x=>x.toLowerCase()).includes(kl)){
+      const matched=numKeys.find(x=>x.toLowerCase()===kl);
+      if(matched) obj[matched]=+v||0;
+    } else {
+      // string keys
+      const strKeys=["seriesAClose","seriesBTarget","asOfLabel","lastUpdated"];
+      const matched=strKeys.find(x=>x.toLowerCase()===kl);
+      if(matched) obj[matched]=v;
+    }
+  });
+  // derive asOfLabel from lastUpdated if not set
+  if(!obj.asOfLabel && obj.lastUpdated){
+    try{
+      const d=new Date(obj.lastUpdated);
+      obj.asOfLabel=d.toLocaleDateString("en-US",{month:"short",year:"numeric"});
+    }catch(e){}
+  }
+  return obj;
+}
+
 async function loadData(){
-  const [vTxt,tTxt,uTxt,t1Txt,t2Txt,mTxt,iTxt,pTxt]=await Promise.all([
+  const [vTxt,tTxt,uTxt,t1Txt,t2Txt,mTxt,iTxt,pTxt,fTxt]=await Promise.all([
     fetch(tabUrl("Vendors")).then(r=>{if(!r.ok)throw new Error("Cannot fetch Vendors tab (HTTP "+r.status+")");return r.text();}),
     fetch(tabUrl("Team")).then(r=>{if(!r.ok)throw new Error("Cannot fetch Team tab");return r.text();}),
     fetch(tabUrl("Utilization")).then(r=>{if(!r.ok)throw new Error("Cannot fetch Utilization tab");return r.text();}),
@@ -2627,6 +2678,7 @@ async function loadData(){
     fetch(tabUrl("Milestones")).then(r=>{if(!r.ok)throw new Error("Cannot fetch Milestones tab");return r.text();}),
     fetch(tabUrl("Investors")).then(r=>{if(!r.ok)throw new Error("Cannot fetch Investors tab");return r.text();}),
     fetch(tabUrl("Programs")).then(r=>{if(!r.ok)throw new Error("Cannot fetch Programs tab");return r.text();}),
+    fetch(tabUrl("Financials")).then(r=>{if(!r.ok){console.warn("Financials tab not found — using defaults");return "";}return r.text();}),
   ]);
   VENDORS=toVendors(parseCSV(vTxt));
   const teamRows=parseCSV(tTxt);
@@ -2646,6 +2698,14 @@ async function loadData(){
   });
   INVESTORS=toInvestors(parseCSV(iTxt));
   PROGRAMS=toPrograms(parseCSV(pTxt));
+  // Financials tab — populate CAPITAL (gracefully skip if tab missing / empty)
+  if(fTxt){
+    const capRows=parseCSV(fTxt);
+    if(capRows.length>0){
+      const parsed=toCapital(capRows);
+      Object.assign(CAPITAL,parsed);
+    }
+  }
 }
 
 /* ── LOADING & ERROR SCREENS ── */
