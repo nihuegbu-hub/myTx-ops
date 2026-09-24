@@ -966,22 +966,31 @@ function HomeView({setView}){
     </SectionCard>
 
     {/* ══ GROUP 3: FYI ═════════════════════════════════════════════ */}
-    <div style={{display:"flex",alignItems:"center",gap:8,margin:"20px 0 10px"}}>
-      <div style={{width:10,height:10,borderRadius:"50%",background:"var(--t3)",flexShrink:0}}/>
-      <span style={{fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.12em",color:"var(--t3)"}}>
-        FYI
-      </span>
-      <div style={{flex:1,height:1,background:"var(--border)"}}/>
-    </div>
-
-    <SectionCard title="Team Capacity"
-      count={stretchedHigh.length}
-      countColor={stretchedHigh.length>1?"var(--coral)":"var(--amber)"}
-      badge={{label:"At or above sustainable load",color:"#78350F",bg:"#FEF5E4"}}
-      onViewAll={()=>setView("team")} viewLabel="Team view →">
-      {stretched.length===0
-        ? <div style={{padding:"14px 16px",color:"var(--t3)",fontSize:12}}>All team members within capacity.</div>
-        : stretched.map(t=>{
+    {stretched.length===0
+      ? <div style={{display:"flex",alignItems:"center",gap:8,margin:"24px 0 8px",padding:"10px 14px",
+          borderRadius:8,background:"var(--card)",border:"1px solid var(--border)"}}>
+          <svg width="14" height="14" viewBox="0 0 20 20" fill="none">
+            <circle cx="10" cy="10" r="9" stroke="#14956A" strokeWidth="1.5"/>
+            <path d="M6 10l3 3 5-5" stroke="#14956A" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          <span style={{fontSize:12,color:"var(--t2)",fontWeight:500}}>Team capacity</span>
+          <span style={{fontSize:12,color:"#14956A",fontWeight:600}}>— all within range</span>
+          <div style={{flex:1}}/>
+          <span style={{fontSize:11,color:"var(--t3)",cursor:"pointer",textDecoration:"underline"}}
+            onClick={()=>setView("team")}>Team view →</span>
+        </div>
+      : <>
+        <div style={{display:"flex",alignItems:"center",gap:8,margin:"20px 0 10px"}}>
+          <div style={{width:10,height:10,borderRadius:"50%",background:"var(--t3)",flexShrink:0}}/>
+          <span style={{fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.12em",color:"var(--t3)"}}>Team Load</span>
+          <div style={{flex:1,height:1,background:"var(--border)"}}/>
+        </div>
+        <SectionCard title="Team Capacity"
+          count={stretchedHigh.length}
+          countColor={stretchedHigh.length>1?"var(--coral)":"var(--amber)"}
+          badge={{label:"At or above sustainable load",color:"#78350F",bg:"#FEF5E4"}}
+          onViewAll={()=>setView("team")} viewLabel="Team view →">
+          {stretched.map(t=>{
             const u=UTIL[t.id]||0;
             const h=healthFor(u);
             const alloc=ALLOCATION[t.id]||{};
@@ -1009,9 +1018,11 @@ function HomeView({setView}){
                 </div>
               </div>
             </div>;
-          })
-      }
-    </SectionCard>
+            })
+          }
+        </SectionCard>
+      </>
+    }
 
   </div>;
 }
