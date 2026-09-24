@@ -668,7 +668,9 @@ function Owner({id}){
 
 /* ── SIDEBAR ── */
 function Sidebar({view,setView}){
-  const alertCount=VENDORS.filter(vendorNeedsAction).length;
+  const overdueVendors=VENDORS.filter(v=>v.weeksLeft<0&&v.status==="active");
+  const atRiskCrit=PROGRAMS.flatMap(prog=>(getGantt(prog.id).tasks||[]).filter(t=>t.crit&&t.status==="at-risk"));
+  const alertCount=overdueVendors.length+atRiskCrit.length;
   const nav=[
     {id:"home",     label:"This Week",  icon:ICONS.home,    badge:alertCount>0?alertCount:null},
     {id:"programs", label:"Programs",   icon:ICONS.flask},
@@ -764,69 +766,86 @@ function ActionRow({stripe,label,detail,meta,owners,rightLabel,rightColor}){
 }
 
 function HomeView({setView}){
-  /* ── derived data ── */
-  const urgent = VENDORS
-    .filter(v=>!["contracted","active","complete"].includes(v.status)&&v.weeksLeft>=0&&v.weeksLeft<=10)
+  const now=new Date();
+  const in8wk=new Date(now.getTime()+8*7*24*3600*1000);
+  const in10wk=new Date(now.getTime()+10*7*24*3600*1000);
+  const in12wk=new Date(now.getTime()+12*7*24*3600*1000);
+
+  /* ── vendor buckets ── */
+  const overdueVendors=VENDORS
+    .filter(v=>v.weeksLeft<0&&v.status==="active")
+    .sort((a,b)=>a.weeksLeft-b.weeksLeft);
+  const upcomingVendors=VENDORS
+    .filter(v=>!["contracted","complete"].includes(v.status)&&v.weeksLeft>=0&&v.weeksLeft<=10)
     .sort((a,b)=>a.weeksLeft-b.weeksLeft);
 
-  const overdue = VENDORS
-    .filter(v=>v.weeksLeft<0&&v.status==="active")
-    .sort((a,b)=>a.weeksLeft-b.weeksLeft);   // most overdue first
-
-  const stretched = TEAM
-    .filter(t=>t.ft&&(UTIL[t.id]||0)>85)
-    .sort((a,b)=>(UTIL[b.id]||0)-(UTIL[a.id]||0));
-
-  const now=new Date();
-  /* ── critical path tasks needing attention ── */
-  const critItems=PROGRAMS.flatMap(prog=>{
+  /* ── critical path buckets ── */
+  const allCritBase=PROGRAMS.flatMap(prog=>{
     const tasks=getGantt(prog.id).tasks||[];
-    return tasks
-      .filter(t=>t.crit&&(
-        t.status==="at-risk"||
-        (t.status==="not-started"&&new Date(t.end)<=new Date(now.getTime()+8*7*24*3600*1000))
-      ))
+    return tasks.filter(t=>t.crit&&t.status!=="complete")
       .map(t=>({...t,prog,wksToEnd:Math.round((new Date(t.end)-now)/(7*24*3600*1000))}));
-  }).sort((a,b)=>{
-    if(a.status==="at-risk"&&b.status!=="at-risk")return -1;
-    if(b.status==="at-risk"&&a.status!=="at-risk")return 1;
-    return a.wksToEnd-b.wksToEnd;
   });
+  const critAtRisk=allCritBase.filter(t=>t.status==="at-risk")
+    .sort((a,b)=>a.wksToEnd-b.wksToEnd);
+  const critWatch=allCritBase.filter(t=>t.status==="not-started"&&new Date(t.end)<=in8wk)
+    .sort((a,b)=>a.wksToEnd-b.wksToEnd);
 
   /* ── upcoming pub/conf milestones (within 12 weeks) ── */
   const upcomingEvents=PROGRAMS.flatMap(prog=>{
     return (getGantt(prog.id).tasks||[])
       .filter(t=>t.lane==="pub_conf"&&t.milestone&&t.status!=="complete")
-      .map(t=>{
-        const d=new Date(t.end);
-        const wks=Math.round((d-now)/(7*24*3600*1000));
-        return {...t,prog,wks};
-      });
-  }).filter(t=>t.wks>=-2&&t.wks<=12)
-    .sort((a,b)=>a.wks-b.wks);
+      .map(t=>{const d=new Date(t.end);const wks=Math.round((d-now)/(7*24*3600*1000));return {...t,prog,wks};});
+  }).filter(t=>t.wks>=-2&&t.wks<=12).sort((a,b)=>a.wks-b.wks);
 
-  /* ── urgency stripe colours ── */
+  /* ── team capacity ── */
+  const stretched=TEAM.filter(t=>t.ft&&(UTIL[t.id]||0)>85)
+    .sort((a,b)=>(UTIL[b.id]||0)-(UTIL[a.id]||0));
+  const stretchedHigh=stretched.filter(t=>(UTIL[t.id]||0)>=90);
+
+  /* ── badge-worthy count (feeds sidebar) ── */
+  const actionNowCount=overdueVendors.length+critAtRisk.length;
+  const radarCount=upcomingVendors.length+critWatch.length+upcomingEvents.length;
   const stripe={critical:"var(--coral)",high:"var(--amber)",medium:"var(--current)",ops:"var(--violet)"};
 
-  const totalActions = urgent.length + overdue.length + critItems.length + upcomingEvents.length + stretched.filter(t=>(UTIL[t.id]||0)>=90).length;
+  function CritRow(t){
+    const past=t.wksToEnd<0;
+    const laneLabel=t.lane.replace(/[0-9]/g,"").toUpperCase();
+    return <ActionRow key={t.id}
+      stripe={t.status==="at-risk"?stripe.critical:stripe.high}
+      label={t.name}
+      detail={t.risk||(past?`End date passed — delay cascades on critical path.`
+        :t.wksToEnd===0?"Due this week":t.status==="not-started"?`Not started · ${t.wksToEnd}w to deadline`:`At risk · ${t.wksToEnd}w`)}
+      rightLabel={past?`${Math.abs(t.wksToEnd)}w overdue`:t.wksToEnd===0?"This week":`${t.wksToEnd}w`}
+      rightColor={past||t.status==="at-risk"?"var(--coral)":"var(--amber)"}
+      meta={[
+        {label:t.status==="at-risk"?"At Risk":"Not Started",
+         color:t.status==="at-risk"?"#92400E":"#7F1D1D",
+         bg:t.status==="at-risk"?"#FEF5E4":"#FDECEA"},
+        {label:t.prog.code,color:t.prog.color,bg:"rgba(0,0,0,0.04)"},
+        {label:laneLabel,color:"#374151",bg:"var(--sand)"},
+      ]}/>;
+  }
 
   return <div>
     <div className="view-head">
       <div className="view-title">This Week</div>
-      <div className="view-sub">{totalActions} item{totalActions!==1?"s":""} need{totalActions===1?"s":""} attention</div>
+      <div className="view-sub">
+        {actionNowCount>0
+          ? <span style={{color:"var(--coral)",fontWeight:600}}>{actionNowCount} item{actionNowCount!==1?"s":""} need{actionNowCount===1?"s":""} immediate attention</span>
+          : <span style={{color:"var(--green)"}}>No immediate action required</span>}
+        {radarCount>0&&<span style={{color:"var(--t3)",marginLeft:8}}>· {radarCount} on radar</span>}
+      </div>
     </div>
 
-    {/* ── Clickable stat tiles ───────────────────────────────────── */}
+    {/* ── Stat tiles ── */}
     <div className="g3 stat-row" style={{marginBottom:20}}>
       {[
-        {val:urgent.length, label:"Contract Alerts",   sub:"vendors need contract",
-         color:"var(--amber)", dest:"vendors",
-         desc:"Unsigned vendors with deadline ≤10 weeks"},
-        {val:overdue.length, label:"Contract Overdue",  sub:"active but unsigned",
-         color:"var(--coral)", dest:"vendors",
-         desc:"Vendors working without executed contract"},
-        {val:stretched.filter(t=>(UTIL[t.id]||0)>=90).length, label:"Team Stretched", sub:"FTE at ≥90% util.",
-         color:stretched.filter(t=>(UTIL[t.id]||0)>=90).length>1?"var(--coral)":"var(--amber)", dest:"team",
+        {val:overdueVendors.length+critAtRisk.length, label:"Action Required", sub:"overdue or at-risk",
+         color:"var(--coral)", dest:"vendors", desc:"Items needing immediate resolution"},
+        {val:upcomingVendors.length+critWatch.length+upcomingEvents.length, label:"On Radar", sub:"upcoming in ≤10 weeks",
+         color:"var(--amber)", dest:"vendors", desc:"Items to monitor this quarter"},
+        {val:stretchedHigh.length, label:"Team Stretched", sub:"FTE at ≥90% util.",
+         color:stretchedHigh.length>1?"var(--coral)":"var(--amber)", dest:"team",
          desc:"Full-time staff at or above sustainable utilization"},
       ].map(s=>(
         <div key={s.label} className="card" onClick={()=>setView(s.dest)}
@@ -846,38 +865,27 @@ function HomeView({setView}){
       ))}
     </div>
 
-    {/* ── Section 1: Contract Needs ──────────────────────────────── */}
-    <SectionCard title="Contract Needs" count={urgent.length}
-      countColor="var(--amber)"
-      badge={{label:"Unsigned",color:"#92400E",bg:"#FEF5E4"}}
-      onViewAll={()=>setView("vendors")} viewLabel="All vendors →">
-      {urgent.length===0
-        ? <div style={{padding:"14px 16px",color:"var(--t3)",fontSize:12}}>No urgent contract deadlines.</div>
-        : urgent.map(v=>(
-          <ActionRow key={v.id}
-            stripe={v.weeksLeft<=4?stripe.critical:stripe.high}
-            label={v.name}
-            detail={v.riskNote}
-            rightLabel={`${v.weeksLeft}w · ${v.deadline}`}
-            rightColor={v.weeksLeft<=4?"var(--coral)":"var(--amber)"}
-            meta={[VC[v.category]]}
-            owners={v.owners}/>
-        ))
-      }
-    </SectionCard>
+    {/* ══ GROUP 1: NEEDS ACTION NOW ════════════════════════════════ */}
+    <div style={{display:"flex",alignItems:"center",gap:8,margin:"4px 0 10px"}}>
+      <div style={{width:10,height:10,borderRadius:"50%",background:"var(--coral)",flexShrink:0}}/>
+      <span style={{fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.12em",color:"var(--coral)"}}>
+        Needs Action Now
+      </span>
+      <div style={{flex:1,height:1,background:"var(--coral)",opacity:0.2}}/>
+      <span style={{fontSize:10,color:"var(--coral)",fontWeight:600}}>{overdueVendors.length+critAtRisk.length}</span>
+    </div>
 
-    {/* ── Section 2: Contract Overdue ────────────────────────────── */}
-    <SectionCard title="Contract Overdue" count={overdue.length}
+    <SectionCard title="Overdue Contracts" count={overdueVendors.length}
       countColor="var(--coral)"
-      badge={{label:"Active · Unsigned",color:"#7F1D1D",bg:"#FDECEA"}}
+      badge={{label:"Active · No Executed Contract",color:"#7F1D1D",bg:"#FDECEA"}}
       onViewAll={()=>setView("vendors")} viewLabel="All vendors →">
-      {overdue.length===0
+      {overdueVendors.length===0
         ? <div style={{padding:"14px 16px",color:"var(--t3)",fontSize:12}}>No overdue contracts.</div>
-        : overdue.map(v=>(
+        : overdueVendors.map(v=>(
           <ActionRow key={v.id}
             stripe={stripe.critical}
             label={v.name}
-            detail={`Work is underway — contract execution is past due. ${v.riskNote}`}
+            detail={`Work is underway — contract execution is past due. ${v.riskNote||""}`}
             rightLabel={`${Math.abs(v.weeksLeft)}w overdue`}
             rightColor="var(--coral)"
             meta={[VC[v.category],{label:"Executing · No Contract",color:"#7F1D1D",bg:"#FDECEA"}]}
@@ -886,48 +894,69 @@ function HomeView({setView}){
       }
     </SectionCard>
 
-    {/* ── Section 3: Critical Path ────────────────────────────────── */}
-    <SectionCard title="Critical Path" count={critItems.length}
-      countColor={critItems.length>0?"var(--coral)":"var(--t3)"}
-      badge={{label:"Needs Attention",color:"#7F1D1D",bg:"#FDECEA"}}
+    <SectionCard title="Critical Path — At Risk" count={critAtRisk.length}
+      countColor={critAtRisk.length>0?"var(--coral)":"var(--t3)"}
+      badge={{label:"At Risk · Delay Cascades",color:"#7F1D1D",bg:"#FDECEA"}}
       onViewAll={()=>setView("programs")} viewLabel="Programs →">
-      {critItems.length===0
-        ? <div style={{padding:"14px 16px",color:"var(--t3)",fontSize:12}}>No critical path items need immediate attention.</div>
-        : critItems.map(t=>{
-            const past=t.wksToEnd<0;
-            const laneLabel=t.lane.replace(/[0-9]/g,"").toUpperCase();
-            return <ActionRow key={t.id}
-              stripe={t.status==="at-risk"?stripe.high:stripe.critical}
-              label={`${t.name}`}
-              detail={t.risk||(past?`End date passed — not yet started. Delay cascades on critical path.`:`Not started · ${t.wksToEnd===0?"due this week":`${t.wksToEnd}w to deadline`}`)}
-              rightLabel={past?`${Math.abs(t.wksToEnd)}w overdue`:t.wksToEnd===0?"This week":`${t.wksToEnd}w`}
-              rightColor={past||t.status==="at-risk"?"var(--coral)":"var(--amber)"}
-              meta={[
-                {label:t.status==="at-risk"?"At Risk":"Not Started",
-                 color:t.status==="at-risk"?"#92400E":"#7F1D1D",
-                 bg:t.status==="at-risk"?"#FEF5E4":"#FDECEA"},
-                {label:t.prog.code,color:t.prog.color,bg:"rgba(0,0,0,0.04)"},
-                {label:laneLabel,color:"#374151",bg:"var(--sand)"},
-              ]}/>;
-          })
+      {critAtRisk.length===0
+        ? <div style={{padding:"14px 16px",color:"var(--t3)",fontSize:12}}>No critical path tasks at risk.</div>
+        : critAtRisk.map(t=>CritRow(t))
       }
     </SectionCard>
 
-    {/* ── Section 4: Upcoming Conferences & Publications ──────────── */}
+    {/* ══ GROUP 2: ON YOUR RADAR ═══════════════════════════════════ */}
+    <div style={{display:"flex",alignItems:"center",gap:8,margin:"20px 0 10px"}}>
+      <div style={{width:10,height:10,borderRadius:"50%",background:"var(--amber)",flexShrink:0}}/>
+      <span style={{fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.12em",color:"var(--amber)"}}>
+        On Your Radar
+      </span>
+      <div style={{flex:1,height:1,background:"var(--amber)",opacity:0.25}}/>
+      <span style={{fontSize:10,color:"var(--amber)",fontWeight:600}}>{radarCount}</span>
+    </div>
+
+    <SectionCard title="Upcoming Contract Deadlines" count={upcomingVendors.length}
+      countColor="var(--amber)"
+      badge={{label:"Unsigned · Due ≤10 weeks",color:"#92400E",bg:"#FEF5E4"}}
+      onViewAll={()=>setView("vendors")} viewLabel="All vendors →">
+      {upcomingVendors.length===0
+        ? <div style={{padding:"14px 16px",color:"var(--t3)",fontSize:12}}>No upcoming contract deadlines.</div>
+        : upcomingVendors.map(v=>(
+          <ActionRow key={v.id}
+            stripe={v.weeksLeft<=4?stripe.critical:stripe.high}
+            label={v.name}
+            detail={v.riskNote||""}
+            rightLabel={`${v.weeksLeft}w · ${v.deadline}`}
+            rightColor={v.weeksLeft<=4?"var(--coral)":"var(--amber)"}
+            meta={[VC[v.category]]}
+            owners={v.owners}/>
+        ))
+      }
+    </SectionCard>
+
+    <SectionCard title="Critical Path — Watch List" count={critWatch.length}
+      countColor={critWatch.length>0?"var(--amber)":"var(--t3)"}
+      badge={{label:"Not Started · Deadline ≤8 weeks",color:"#92400E",bg:"#FEF5E4"}}
+      onViewAll={()=>setView("programs")} viewLabel="Programs →">
+      {critWatch.length===0
+        ? <div style={{padding:"14px 16px",color:"var(--t3)",fontSize:12}}>No critical path tasks approaching deadline.</div>
+        : critWatch.map(t=>CritRow(t))
+      }
+    </SectionCard>
+
     <SectionCard title="Upcoming Events" count={upcomingEvents.length}
       countColor="var(--violet)"
-      badge={{label:"Conferences & Publications",color:"#4C1D95",bg:"#F0EDF8"}}
+      badge={{label:"Conferences & Publications · ≤12 weeks",color:"#4C1D95",bg:"#F0EDF8"}}
       onViewAll={()=>setView("programs")} viewLabel="Programs →">
       {upcomingEvents.length===0
         ? <div style={{padding:"14px 16px",color:"var(--t3)",fontSize:12}}>No conferences or publications in the next 12 weeks.</div>
         : upcomingEvents.map(t=>{
-            const overdue=t.wks<0;
+            const od=t.wks<0;
             return <ActionRow key={t.id}
-              stripe={overdue?stripe.critical:t.wks<=4?stripe.high:stripe.medium}
+              stripe={od?stripe.critical:t.wks<=4?stripe.high:stripe.medium}
               label={t.name}
               detail={t.risk||`${t.prog.name} (${t.prog.code}) · Publications & Conferences`}
-              rightLabel={overdue?`${Math.abs(t.wks)}w overdue`:`${t.wks}w`}
-              rightColor={overdue?"var(--coral)":t.wks<=4?"var(--amber)":"var(--current)"}
+              rightLabel={od?`${Math.abs(t.wks)}w overdue`:`${t.wks}w`}
+              rightColor={od?"var(--coral)":t.wks<=4?"var(--amber)":"var(--current)"}
               meta={[
                 {label:"Publication / Conference",color:"#4C1D95",bg:"#F0EDF8"},
                 {label:t.prog.name,color:t.prog.color,bg:"rgba(0,0,0,0.04)"},
@@ -936,10 +965,18 @@ function HomeView({setView}){
       }
     </SectionCard>
 
-    {/* ── Section 5: Team Capacity ───────────────────────────────── */}
+    {/* ══ GROUP 3: FYI ═════════════════════════════════════════════ */}
+    <div style={{display:"flex",alignItems:"center",gap:8,margin:"20px 0 10px"}}>
+      <div style={{width:10,height:10,borderRadius:"50%",background:"var(--t3)",flexShrink:0}}/>
+      <span style={{fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.12em",color:"var(--t3)"}}>
+        FYI
+      </span>
+      <div style={{flex:1,height:1,background:"var(--border)"}}/>
+    </div>
+
     <SectionCard title="Team Capacity"
-      count={stretched.filter(t=>(UTIL[t.id]||0)>=90).length}
-      countColor={stretched.filter(t=>(UTIL[t.id]||0)>=90).length>1?"var(--coral)":"var(--amber)"}
+      count={stretchedHigh.length}
+      countColor={stretchedHigh.length>1?"var(--coral)":"var(--amber)"}
       badge={{label:"At or above sustainable load",color:"#78350F",bg:"#FEF5E4"}}
       onViewAll={()=>setView("team")} viewLabel="Team view →">
       {stretched.length===0
@@ -955,22 +992,14 @@ function HomeView({setView}){
                   <div className="action-label" style={{flex:1}}>{t.name}
                     <span style={{fontSize:11,color:"var(--t3)",fontWeight:400,marginLeft:6}}>{t.role}</span>
                   </div>
-                  <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:12,
-                    fontWeight:600,color:h.color}}>{u}%</span>
-                  <span className="chip" style={{background:u>=90?"var(--coral-bg)":"var(--amber-bg)",
-                    color:h.color,fontSize:9.5}}>{h.label}</span>
+                  <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:12,fontWeight:600,color:h.color}}>{u}%</span>
+                  <span className="chip" style={{background:u>=90?"var(--coral-bg)":"var(--amber-bg)",color:h.color,fontSize:9.5}}>{h.label}</span>
                 </div>
-                {/* mini allocation bar */}
                 <div style={{marginTop:7,display:"flex",height:5,borderRadius:3,overflow:"hidden",gap:1}}>
-                  {[
-                    {k:"science",  color:"#0D7E8E"},
-                    {k:"investor", color:"#6B53A4"},
-                    {k:"bd",       color:"#C9851C"},
-                    {k:"strategic",color:"#14956A"},
-                    {k:"ops",      color:"#6B7280"},
-                  ].map(({k,color})=>alloc[k]>0&&(
-                    <div key={k} style={{flex:alloc[k],background:color,minWidth:alloc[k]>0?2:0}}
-                      title={`${k}: ${alloc[k]}%`}/>
+                  {[{k:"science",color:"#0D7E8E"},{k:"investor",color:"#6B53A4"},{k:"bd",color:"#C9851C"},
+                    {k:"strategic",color:"#14956A"},{k:"ops",color:"#6B7280"}]
+                    .map(({k,color})=>alloc[k]>0&&(
+                      <div key={k} style={{flex:alloc[k],background:color,minWidth:alloc[k]>0?2:0}} title={`${k}: ${alloc[k]}%`}/>
                   ))}
                 </div>
                 <div style={{display:"flex",gap:10,marginTop:5}}>
@@ -2392,7 +2421,9 @@ function CapitalView(){
 
 /* ── MOBILE TAB BAR ── */
 function MobileTabBar({view,setView}){
-  const alertCount=VENDORS.filter(vendorNeedsAction).length;
+  const overdueVendors=VENDORS.filter(v=>v.weeksLeft<0&&v.status==="active");
+  const atRiskCrit=PROGRAMS.flatMap(prog=>(getGantt(prog.id).tasks||[]).filter(t=>t.crit&&t.status==="at-risk"));
+  const alertCount=overdueVendors.length+atRiskCrit.length;
   const nav=[
     {id:"home",     label:"This Week",  icon:ICONS.home,    badge:alertCount>0?alertCount:null},
     {id:"programs", label:"Programs",   icon:ICONS.flask},
