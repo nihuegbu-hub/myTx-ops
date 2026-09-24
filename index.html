@@ -700,8 +700,8 @@ function Sidebar({view,setView}){
       ))}
     </nav>
     <div className="sb-footer">
-      <div className="sb-date">Sep 22, 2026</div>
-      <div className="sb-round">Series A Ext. · Complete</div>
+      <div className="sb-date">{(()=>{const n=new Date();return n.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});})()}</div>
+      <div className="sb-round">{CAPITAL.seriesAClose&&CAPITAL.seriesAClose!=="—"?`Series A · Closed ${CAPITAL.seriesAClose}`:"Series A · Complete"}</div>
     </div>
   </div>;
 }
@@ -712,10 +712,26 @@ function TopBar({view}){
     investors:"Investors & IR",team:"Team Capacity",capital:"Capital & Scenarios"};
   const rw=CAPITAL.runwayMonths;
   const rwColor=rw<=6?"var(--coral)":rw<=12?"var(--amber)":"var(--current)";
+  // Derive next upcoming milestone from MILESTONES array
+  const nextMs=(()=>{
+    const now=new Date();
+    function qToDate(q){
+      // "Q4 2026" → approximate start of that quarter
+      const m=q.match(/Q(\d)\s+(\d{4})/);
+      if(!m) return null;
+      return new Date(+m[2],((+m[1])-1)*3,1);
+    }
+    const upcoming=MILESTONES
+      .filter(ms=>ms.status!=="complete")
+      .map(ms=>({ms,d:qToDate(ms.quarter)}))
+      .filter(x=>x.d&&x.d>=now)
+      .sort((a,b)=>a.d-b.d);
+    return upcoming.length?upcoming[0].ms:null;
+  })();
   return <div className="topbar">
     <div className="tb-title">{labels[view]||view}</div>
     <div className="tb-divider"/>
-    <div className="tb-next">Next: <strong>NHP 6-Month Readout · Q4 2026</strong></div>
+    {nextMs&&<div className="tb-next">Next: <strong>{nextMs.name} · {nextMs.quarter}</strong></div>}
     <div className="tb-right">
       <div className="runway-pill">
         <span className="runway-num mono" style={{color:rwColor}}>{rw}</span>
@@ -1074,7 +1090,21 @@ function GanttChart2({mode, selProg="both", onMsClick, selMs}){
   const RS=new Date("2025-01-01");   // range start (combined)
   const RE=new Date("2029-06-01");   // range end   (combined)
   const PC=new Date("2026-01-01");   // past cut (9 months ago)
-  const FC=new Date("2028-04-01");   // future cut (~runway)
+  // FC (future cut) derived from sheet: seriesAClose + runwayMonths, fallback to hardcoded
+  const FC=(()=>{
+    try{
+      if(CAPITAL.runwayMonths>0&&CAPITAL.seriesAClose&&CAPITAL.seriesAClose!=="—"){
+        // parse "Sep 2026" → Date, add runwayMonths
+        const base=new Date(CAPITAL.seriesAClose);
+        if(!isNaN(base)){
+          const fc=new Date(base);
+          fc.setMonth(fc.getMonth()+Math.round(CAPITAL.runwayMonths));
+          return fc;
+        }
+      }
+    }catch(e){}
+    return new Date("2028-04-01"); // fallback
+  })();
   const TODAY=new Date("2026-09-22");
 
   const daysRS_PC=(PC-RS)/864e5;
@@ -2240,6 +2270,22 @@ function CapitalView(){
       <div className="view-title">Capital & Scenarios</div>
       <div className="view-sub">Runway, financing outlook, and development scenario planning</div>
     </div>
+    {/* Financials tab misconfiguration warning */}
+    {CAPITAL._missingKeys&&CAPITAL._missingKeys.length>0&&(
+      <div style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 14px",
+        marginBottom:14,borderRadius:8,background:"var(--amber-bg)",
+        border:"1px solid var(--amber)",fontSize:12}}>
+        <span style={{fontSize:16,lineHeight:1,flexShrink:0}}>⚠️</span>
+        <div>
+          <span style={{fontWeight:600,color:"var(--amber)"}}>Financials tab: missing or zero values — </span>
+          <span style={{color:"var(--t2)"}}>
+            {CAPITAL._missingKeys.join(", ")}. Check that column A key names in the
+            Financials sheet tab exactly match the expected keys (case and spacing don't matter,
+            but the key name itself must be correct).
+          </span>
+        </div>
+      </div>
+    )}
     {/* Capital tiles */}
     <div className="g3" style={{marginBottom:16}}>
       {[
@@ -2637,27 +2683,39 @@ function toCapital(rows){
   //                              key="proceeds_R&D", value="45" (percent)
   const numKeys=["cashOnHand","monthlyBurn","runwayMonths","totalRunway",
                  "seriesBMonthsAway","totalRaised"];
+  const strKeys=["seriesAClose","seriesBTarget","asOfLabel","lastUpdated"];
+  // Normalise a key: lowercase, strip ALL whitespace, underscores, and hyphens
+  // so "cash_on_hand", "Cash On Hand", "cash-on-hand" all match "cashonhand"
+  function norm(s){return s.toLowerCase().replace(/[\s_\-]+/g,"");}
+  const numMap=Object.fromEntries(numKeys.map(k=>[norm(k),k]));
+  const strMap=Object.fromEntries(strKeys.map(k=>[norm(k),k]));
   const obj={cashOnHand:0,monthlyBurn:0,runwayMonths:0,totalRunway:0,
              seriesAClose:"—",seriesBTarget:"—",seriesBMonthsAway:0,
-             totalRaised:0,useOfProceeds:[],asOfLabel:"",lastUpdated:""};
+             totalRaised:0,useOfProceeds:[],asOfLabel:"",lastUpdated:"",
+             _missingKeys:[]};
   rows.forEach(r=>{
     const k=(r.key||"").trim();
     const v=(r.value||"").trim();
     if(!k||!v) return;
-    const kl=k.toLowerCase().replace(/\s+/g,"");
-    if(kl.startsWith("proceeds_")){
-      const label=k.slice("proceeds_".length).trim();
-      obj.useOfProceeds.push({label,pct:+v||0});
-    } else if(numKeys.map(x=>x.toLowerCase()).includes(kl)){
-      const matched=numKeys.find(x=>x.toLowerCase()===kl);
-      if(matched) obj[matched]=+v||0;
-    } else {
-      // string keys
-      const strKeys=["seriesAClose","seriesBTarget","asOfLabel","lastUpdated"];
-      const matched=strKeys.find(x=>x.toLowerCase()===kl);
-      if(matched) obj[matched]=v;
+    const kn=norm(k);
+    if(kn.startsWith("proceeds")){
+      // strip any "proceeds", "_", "-", " " prefix to get the label
+      const label=k.replace(/^proceeds[\s_\-]*/i,"").trim();
+      if(label) obj.useOfProceeds.push({label,pct:+v||0});
+    } else if(numMap[kn]){
+      obj[numMap[kn]]=+v||0;
+    } else if(strMap[kn]){
+      obj[strMap[kn]]=v;
     }
+    // unknown keys are silently ignored (may be CFO notes / extra columns)
   });
+  // Warn about missing critical keys so misconfiguration is visible in console
+  const critKeys=["cashOnHand","monthlyBurn","runwayMonths","seriesBTarget"];
+  obj._missingKeys=critKeys.filter(k=>!obj[k]||obj[k]==="—");
+  if(obj._missingKeys.length){
+    console.warn("[YemayaOps] Financials tab missing or zero for:",obj._missingKeys.join(", "),
+      "— check key names in column A match the expected values.");
+  }
   // derive asOfLabel from lastUpdated if not set
   if(!obj.asOfLabel && obj.lastUpdated){
     try{
