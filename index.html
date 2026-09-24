@@ -838,32 +838,46 @@ function HomeView({setView}){
     </div>
 
     {/* ── Stat tiles ── */}
-    <div className="g3 stat-row" style={{marginBottom:20}}>
-      {[
-        {val:overdueVendors.length+critAtRisk.length, label:"Action Required", sub:"overdue or at-risk",
-         color:"var(--coral)", dest:"vendors", desc:"Items needing immediate resolution"},
-        {val:upcomingVendors.length+critWatch.length+upcomingEvents.length, label:"On Radar", sub:"upcoming in ≤10 weeks",
-         color:"var(--amber)", dest:"vendors", desc:"Items to monitor this quarter"},
-        {val:stretchedHigh.length, label:"Team Stretched", sub:"FTE at ≥90% util.",
-         color:stretchedHigh.length>1?"var(--coral)":"var(--amber)", dest:"team",
+    {(()=>{
+      const actionVal=overdueVendors.length+critAtRisk.length;
+      const radarVal=upcomingVendors.length+critWatch.length+upcomingEvents.length;
+      const tiles=[
+        {val:actionVal, label:"Action Required", sub:actionVal===0?"All clear":"overdue or at-risk",
+         color:actionVal===0?"#14956A":"var(--coral)", allClear:actionVal===0, dest:"vendors",
+         desc:"Items needing immediate resolution"},
+        {val:radarVal, label:"On Radar", sub:radarVal===0?"Nothing upcoming":"upcoming in ≤10 weeks",
+         color:radarVal===0?"#14956A":"var(--amber)", allClear:radarVal===0, dest:"vendors",
+         desc:"Items to monitor this quarter"},
+        {val:stretchedHigh.length, label:"Team Stretched", sub:stretchedHigh.length===0?"Within capacity":"FTE at ≥90% util.",
+         color:stretchedHigh.length===0?"#14956A":stretchedHigh.length>1?"var(--coral)":"var(--amber)",
+         allClear:stretchedHigh.length===0, dest:"team",
          desc:"Full-time staff at or above sustainable utilization"},
-      ].map(s=>(
-        <div key={s.label} className="card" onClick={()=>setView(s.dest)}
-          title={s.desc}
-          style={{padding:"14px 18px",cursor:"pointer",transition:"box-shadow .12s, transform .12s",userSelect:"none"}}
-          onMouseEnter={e=>{e.currentTarget.style.boxShadow="0 4px 14px rgba(0,0,0,0.1)";e.currentTarget.style.transform="translateY(-1px)";}}
-          onMouseLeave={e=>{e.currentTarget.style.boxShadow="";e.currentTarget.style.transform="";}}>
-          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between"}}>
-            <div className="mono" style={{fontSize:28,fontWeight:500,color:s.color,lineHeight:1}}>{s.val}</div>
-            <svg width="14" height="14" viewBox="0 0 20 20" fill="none" style={{color:"var(--t3)",marginTop:2}}>
-              <path d="M7 5l5 5-5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+      ];
+      return <div className="g3 stat-row" style={{marginBottom:20}}>
+        {tiles.map(s=>(
+          <div key={s.label} className="card" onClick={()=>setView(s.dest)}
+            title={s.desc}
+            style={{padding:"14px 18px",cursor:"pointer",transition:"box-shadow .12s, transform .12s",userSelect:"none"}}
+            onMouseEnter={e=>{e.currentTarget.style.boxShadow="0 4px 14px rgba(0,0,0,0.1)";e.currentTarget.style.transform="translateY(-1px)";}}
+            onMouseLeave={e=>{e.currentTarget.style.boxShadow="";e.currentTarget.style.transform="";}}>
+            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between"}}>
+              {s.allClear
+                ? <svg width="28" height="28" viewBox="0 0 28 28" fill="none" style={{flexShrink:0}}>
+                    <circle cx="14" cy="14" r="13" stroke="#14956A" strokeWidth="1.5" fill="none" opacity={0.2}/>
+                    <path d="M8 14l4 4 8-8" stroke="#14956A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                : <div className="mono" style={{fontSize:28,fontWeight:500,color:s.color,lineHeight:1}}>{s.val}</div>
+              }
+              <svg width="14" height="14" viewBox="0 0 20 20" fill="none" style={{color:"var(--t3)",marginTop:2}}>
+                <path d="M7 5l5 5-5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+            <div style={{fontSize:12,fontWeight:600,color:s.allClear?"#14956A":"var(--t1)",marginTop:6}}>{s.label}</div>
+            <div style={{fontSize:11,color:s.allClear?"#14956A":"var(--t3)",marginTop:1}}>{s.sub}</div>
           </div>
-          <div style={{fontSize:12,fontWeight:600,color:"var(--t1)",marginTop:6}}>{s.label}</div>
-          <div style={{fontSize:11,color:"var(--t3)",marginTop:1}}>{s.sub}</div>
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>;
+    })()}
 
     {/* ══ GROUP 1: NEEDS ACTION NOW ════════════════════════════════ */}
     <div style={{display:"flex",alignItems:"center",gap:8,margin:"4px 0 10px"}}>
@@ -905,65 +919,78 @@ function HomeView({setView}){
     </SectionCard>
 
     {/* ══ GROUP 2: ON YOUR RADAR ═══════════════════════════════════ */}
-    <div style={{display:"flex",alignItems:"center",gap:8,margin:"20px 0 10px"}}>
-      <div style={{width:10,height:10,borderRadius:"50%",background:"var(--amber)",flexShrink:0}}/>
-      <span style={{fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.12em",color:"var(--amber)"}}>
-        On Your Radar
-      </span>
-      <div style={{flex:1,height:1,background:"var(--amber)",opacity:0.25}}/>
-      <span style={{fontSize:10,color:"var(--amber)",fontWeight:600}}>{radarCount}</span>
-    </div>
+    {radarCount===0
+      ? <div style={{display:"flex",alignItems:"center",gap:8,margin:"20px 0 8px",padding:"10px 14px",
+          borderRadius:8,background:"var(--card)",border:"1px solid var(--border)"}}>
+          <svg width="14" height="14" viewBox="0 0 20 20" fill="none">
+            <circle cx="10" cy="10" r="9" stroke="#14956A" strokeWidth="1.5"/>
+            <path d="M6 10l3 3 5-5" stroke="#14956A" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          <span style={{fontSize:12,color:"var(--t2)",fontWeight:500}}>On Your Radar</span>
+          <span style={{fontSize:12,color:"#14956A",fontWeight:600}}>— nothing due in the next 10 weeks</span>
+        </div>
+      : <>
+        <div style={{display:"flex",alignItems:"center",gap:8,margin:"20px 0 10px"}}>
+          <div style={{width:10,height:10,borderRadius:"50%",background:"var(--amber)",flexShrink:0}}/>
+          <span style={{fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.12em",color:"var(--amber)"}}>
+            On Your Radar
+          </span>
+          <div style={{flex:1,height:1,background:"var(--amber)",opacity:0.25}}/>
+          <span style={{fontSize:10,color:"var(--amber)",fontWeight:600}}>{radarCount}</span>
+        </div>
 
-    <SectionCard title="Upcoming Contract Deadlines" count={upcomingVendors.length}
-      countColor="var(--amber)"
-      badge={{label:"Unsigned · Due ≤10 weeks",color:"#92400E",bg:"#FEF5E4"}}
-      onViewAll={()=>setView("vendors")} viewLabel="All vendors →">
-      {upcomingVendors.length===0
-        ? <div style={{padding:"14px 16px",color:"var(--t3)",fontSize:12}}>No upcoming contract deadlines.</div>
-        : upcomingVendors.map(v=>(
-          <ActionRow key={v.id}
-            stripe={v.weeksLeft<=4?stripe.critical:stripe.high}
-            label={v.name}
-            detail={v.riskNote||""}
-            rightLabel={`${v.weeksLeft}w · ${v.deadline}`}
-            rightColor={v.weeksLeft<=4?"var(--coral)":"var(--amber)"}
-            meta={[VC[v.category]]}
-            owners={v.owners}/>
-        ))
-      }
-    </SectionCard>
+        <SectionCard title="Upcoming Contract Deadlines" count={upcomingVendors.length}
+          countColor="var(--amber)"
+          badge={{label:"Unsigned · Due ≤10 weeks",color:"#92400E",bg:"#FEF5E4"}}
+          onViewAll={()=>setView("vendors")} viewLabel="All vendors →">
+          {upcomingVendors.length===0
+            ? <div style={{padding:"14px 16px",color:"var(--t3)",fontSize:12}}>No upcoming contract deadlines.</div>
+            : upcomingVendors.map(v=>(
+              <ActionRow key={v.id}
+                stripe={v.weeksLeft<=4?stripe.critical:stripe.high}
+                label={v.name}
+                detail={v.riskNote||""}
+                rightLabel={`${v.weeksLeft}w · ${v.deadline}`}
+                rightColor={v.weeksLeft<=4?"var(--coral)":"var(--amber)"}
+                meta={[VC[v.category]]}
+                owners={v.owners}/>
+            ))
+          }
+        </SectionCard>
 
-    <SectionCard title="Critical Path — Watch List" count={critWatch.length}
-      countColor={critWatch.length>0?"var(--amber)":"var(--t3)"}
-      badge={{label:"Not Started · Deadline ≤8 weeks",color:"#92400E",bg:"#FEF5E4"}}
-      onViewAll={()=>setView("programs")} viewLabel="Programs →">
-      {critWatch.length===0
-        ? <div style={{padding:"14px 16px",color:"var(--t3)",fontSize:12}}>No critical path tasks approaching deadline.</div>
-        : critWatch.map(t=>CritRow(t))
-      }
-    </SectionCard>
+        <SectionCard title="Critical Path — Watch List" count={critWatch.length}
+          countColor={critWatch.length>0?"var(--amber)":"var(--t3)"}
+          badge={{label:"Not Started · Deadline ≤8 weeks",color:"#92400E",bg:"#FEF5E4"}}
+          onViewAll={()=>setView("programs")} viewLabel="Programs →">
+          {critWatch.length===0
+            ? <div style={{padding:"14px 16px",color:"var(--t3)",fontSize:12}}>No critical path tasks approaching deadline.</div>
+            : critWatch.map(t=>CritRow(t))
+          }
+        </SectionCard>
 
-    <SectionCard title="Upcoming Events" count={upcomingEvents.length}
-      countColor="var(--violet)"
-      badge={{label:"Conferences & Publications · ≤12 weeks",color:"#4C1D95",bg:"#F0EDF8"}}
-      onViewAll={()=>setView("programs")} viewLabel="Programs →">
-      {upcomingEvents.length===0
-        ? <div style={{padding:"14px 16px",color:"var(--t3)",fontSize:12}}>No conferences or publications in the next 12 weeks.</div>
-        : upcomingEvents.map(t=>{
-            const od=t.wks<0;
-            return <ActionRow key={t.id}
-              stripe={od?stripe.critical:t.wks<=4?stripe.high:stripe.medium}
-              label={t.name}
-              detail={t.risk||`${t.prog.name} (${t.prog.code}) · Publications & Conferences`}
-              rightLabel={od?`${Math.abs(t.wks)}w overdue`:`${t.wks}w`}
-              rightColor={od?"var(--coral)":t.wks<=4?"var(--amber)":"var(--current)"}
-              meta={[
-                {label:"Publication / Conference",color:"#4C1D95",bg:"#F0EDF8"},
-                {label:t.prog.name,color:t.prog.color,bg:"rgba(0,0,0,0.04)"},
-              ]}/>;
-          })
-      }
-    </SectionCard>
+        <SectionCard title="Upcoming Events" count={upcomingEvents.length}
+          countColor="var(--violet)"
+          badge={{label:"Conferences & Publications · ≤12 weeks",color:"#4C1D95",bg:"#F0EDF8"}}
+          onViewAll={()=>setView("programs")} viewLabel="Programs →">
+          {upcomingEvents.length===0
+            ? <div style={{padding:"14px 16px",color:"var(--t3)",fontSize:12}}>No conferences or publications in the next 12 weeks.</div>
+            : upcomingEvents.map(t=>{
+                const od=t.wks<0;
+                return <ActionRow key={t.id}
+                  stripe={od?stripe.critical:t.wks<=4?stripe.high:stripe.medium}
+                  label={t.name}
+                  detail={t.risk||`${t.prog.name} (${t.prog.code}) · Publications & Conferences`}
+                  rightLabel={od?`${Math.abs(t.wks)}w overdue`:`${t.wks}w`}
+                  rightColor={od?"var(--coral)":t.wks<=4?"var(--amber)":"var(--current)"}
+                  meta={[
+                    {label:"Publication / Conference",color:"#4C1D95",bg:"#F0EDF8"},
+                    {label:t.prog.name,color:t.prog.color,bg:"rgba(0,0,0,0.04)"},
+                  ]}/>;
+              })
+          }
+        </SectionCard>
+      </>
+    }
 
     {/* ══ GROUP 3: FYI ═════════════════════════════════════════════ */}
     {stretched.length===0
