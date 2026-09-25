@@ -1946,29 +1946,78 @@ function ProgramsView(){
 function VendorsView(){
   const [catFilter,setCatFilter]=useState(null);
   const [expanded,setExpanded]=useState(null);
+  const [mode,setMode]=useState("operator");
+  const isInvestor=mode==="investor";
   const filtered=catFilter?VENDORS.filter(v=>v.category===catFilter):VENDORS;
   const totalBudget=(VENDORS.reduce((s,v)=>s+v.costExt,0)/1000).toFixed(1);
+
+  /* ── investor rollup: group by program → milestone ── */
+  const PROG_NAMES={p1:"YEM-001 · Bone Anabolic Program",p2:"YEM-002 · Secondary Program"};
+  const PROG_COLOR={p1:"var(--current)",p2:"var(--violet)"};
+
+  function buildInvestorGroups(){
+    // Collect all milestone names referenced across all vendors, plus "Shared / Platform"
+    const msOrder=MILESTONES.map(m=>m.name).concat(["Shared / Platform"]);
+    // Build map: program → milestone → vendors[]
+    const groups={};
+    VENDORS.forEach(v=>{
+      const prog=v.program||"shared";
+      const ms=v.milestone||"Shared / Platform";
+      if(!groups[prog])groups[prog]={};
+      if(!groups[prog][ms])groups[prog][ms]=[];
+      groups[prog][ms].push(v);
+    });
+    // Sort programs: p1, p2, shared last
+    const progOrder=["p1","p2","shared"];
+    return progOrder.filter(p=>groups[p]).map(prog=>{
+      const msMap=groups[prog];
+      // Sort milestones by canonical order
+      const msEntries=msOrder.filter(ms=>msMap[ms]).map(ms=>({ms,vendors:msMap[ms]}));
+      const remaining=Object.keys(msMap).filter(ms=>!msOrder.includes(ms)).map(ms=>({ms,vendors:msMap[ms]}));
+      return {prog,entries:[...msEntries,...remaining]};
+    });
+  }
+
+  const investorGroups=buildInvestorGroups();
 
   return <div>
     <div className="view-head">
       <div className="view-title">Vendors & External Services</div>
       <div className="view-sub">{VENDORS.length} vendors · ${totalBudget}M total external budget</div>
     </div>
-    {/* Filters */}
-    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
-      <button onClick={()=>setCatFilter(null)} style={{padding:"4px 12px",border:"1px solid var(--border)",
-        borderRadius:20,cursor:"pointer",background:!catFilter?"var(--current)":"var(--card)",
-        color:!catFilter?"#fff":"var(--t2)",fontSize:12,fontFamily:"inherit"}}>All</button>
-      {Object.keys(VC).map(c=>(
-        <button key={c} onClick={()=>setCatFilter(catFilter===c?null:c)}
-          style={{padding:"4px 12px",border:"1px solid var(--border)",borderRadius:20,cursor:"pointer",
-            background:catFilter===c?VC[c].color:"var(--card)",
-            color:catFilter===c?"#fff":"var(--t2)",fontSize:12,fontFamily:"inherit"}}>
-          {VC[c].label}
-        </button>
-      ))}
+
+    {/* ── Mode toggle + filters ── */}
+    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+      {/* View toggle */}
+      <div style={{display:"flex",alignItems:"center",gap:6}}>
+        <span style={{fontSize:10.5,color:"var(--t3)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.08em"}}>View</span>
+        {[["operator","Operator"],["investor","Investor"]].map(([v,l])=>(
+          <button key={v} className={`gantt-mode-btn${mode===v?" active":""}`}
+            onClick={()=>setMode(v)}>{l}</button>
+        ))}
+      </div>
+      {/* Category filters — operator mode only */}
+      {!isInvestor&&<>
+        <div style={{width:1,height:18,background:"var(--border)"}}/>
+        <button onClick={()=>setCatFilter(null)} style={{padding:"4px 12px",border:"1px solid var(--border)",
+          borderRadius:20,cursor:"pointer",background:!catFilter?"var(--current)":"var(--card)",
+          color:!catFilter?"#fff":"var(--t2)",fontSize:12,fontFamily:"inherit"}}>All</button>
+        {Object.keys(VC).map(c=>(
+          <button key={c} onClick={()=>setCatFilter(catFilter===c?null:c)}
+            style={{padding:"4px 12px",border:"1px solid var(--border)",borderRadius:20,cursor:"pointer",
+              background:catFilter===c?VC[c].color:"var(--card)",
+              color:catFilter===c?"#fff":"var(--t2)",fontSize:12,fontFamily:"inherit"}}>
+            {VC[c].label}
+          </button>
+        ))}
+      </>}
+      {isInvestor&&<span style={{marginLeft:"auto",fontSize:11,color:"var(--t3)"}}>
+        External spend by program · milestone
+      </span>}
     </div>
-    <div className="card" style={{padding:0,overflow:"hidden"}}>
+
+    {/* ── OPERATOR MODE — detail table ── */}
+    {!isInvestor&&<div className="card" style={{padding:0,overflow:"hidden"}}>
       <div style={{overflowX:"auto"}}>
         <table className="tbl">
           <thead>
@@ -2029,7 +2078,74 @@ function VendorsView(){
           </tbody>
         </table>
       </div>
-    </div>
+    </div>}
+
+    {/* ── INVESTOR MODE — rollup cards ── */}
+    {isInvestor&&<div style={{display:"flex",flexDirection:"column",gap:18}}>
+      {investorGroups.length===0&&<div className="card" style={{padding:24,textAlign:"center",color:"var(--t3)"}}>
+        Add <code style={{fontSize:11,background:"var(--sand)",padding:"1px 5px",borderRadius:3}}>program</code> and <code style={{fontSize:11,background:"var(--sand)",padding:"1px 5px",borderRadius:3}}>milestone</code> columns to your Vendors sheet to see grouped spend.
+      </div>}
+      {investorGroups.map(({prog,entries})=>{
+        const progTotal=entries.reduce((s,{vendors:vs})=>s+vs.reduce((ss,v)=>ss+v.costExt,0),0);
+        const progLabel=PROG_NAMES[prog]||(prog==="shared"?"Shared / Platform":prog);
+        const progColor=PROG_COLOR[prog]||"var(--t2)";
+        return <div key={prog}>
+          {/* Program header */}
+          <div style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:10,
+            paddingBottom:8,borderBottom:`2px solid ${progColor}`}}>
+            <span style={{fontFamily:"'DM Serif Display',serif",fontStyle:"italic",
+              fontSize:16,color:"var(--t1)"}}>{progLabel}</span>
+            <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:13,
+              color:progColor,fontWeight:600}}>${(progTotal/1000).toFixed(1)}M</span>
+            <span style={{fontSize:11,color:"var(--t3)",marginLeft:"auto"}}>
+              estimated external commitment
+            </span>
+          </div>
+          {/* Milestone cards */}
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {entries.map(({ms,vendors:mvs})=>{
+              const msTotal=mvs.reduce((s,v)=>s+v.costExt,0);
+              const msObj=MILESTONES.find(m=>m.name===ms);
+              return <div key={ms} className="card" style={{padding:"14px 18px"}}>
+                <div style={{display:"flex",alignItems:"flex-start",gap:12}}>
+                  {/* Milestone label + quarter */}
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                      <span style={{fontWeight:600,fontSize:13.5,color:"var(--t1)"}}>{ms}</span>
+                      {msObj&&<span style={{fontFamily:"'JetBrains Mono',monospace",
+                        fontSize:10,color:"var(--t3)",background:"var(--sand)",
+                        padding:"1px 6px",borderRadius:3}}>{msObj.quarter}</span>}
+                    </div>
+                    {/* Vendor chips */}
+                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                      {mvs.map(v=>(
+                        <div key={v.id} style={{display:"flex",alignItems:"center",gap:5,
+                          padding:"3px 9px",borderRadius:5,border:"1px solid var(--border)",
+                          background:"var(--sand)",fontSize:11.5}}>
+                          <span style={{fontWeight:500,color:"var(--t1)"}}>{v.name}</span>
+                          {v.costExt>0&&<span style={{fontFamily:"'JetBrains Mono',monospace",
+                            fontSize:10,color:"var(--t3)"}}>${v.costExt}K</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Rollup total */}
+                  <div style={{textAlign:"right",flexShrink:0}}>
+                    <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:20,
+                      fontWeight:600,color:progColor,lineHeight:1}}>
+                      ${msTotal>=1000?(msTotal/1000).toFixed(1)+"M":msTotal+"K"}
+                    </div>
+                    <div style={{fontSize:10,color:"var(--t3)",marginTop:3}}>
+                      {mvs.length} vendor{mvs.length!==1?"s":""}
+                    </div>
+                  </div>
+                </div>
+              </div>;
+            })}
+          </div>
+        </div>;
+      })}
+    </div>}
   </div>;
 }
 
@@ -2576,6 +2692,8 @@ function toVendors(rows){
     note:r.note||"",
     riskNote:r.riskNote||"",
     lastUpdated:r.lastUpdated||"",
+    milestone:r.milestone||"",
+    program:r.program||"",
     deadline:(()=>{
       if(r.dueDate)return r.dueDate; // prefer explicit sheet value
       const wl=r.weeksLeft===""?99:+r.weeksLeft;
