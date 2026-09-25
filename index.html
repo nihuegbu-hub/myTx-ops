@@ -1942,6 +1942,131 @@ function ProgramsView(){
 }
 
 
+/* ── INVESTOR ROLLUP (sub-component) ── */
+function InvestorRollup({groups,progNames,progColor}){
+  const [openMs,setOpenMs]=useState({});
+  const toggle=key=>setOpenMs(p=>({...p,[key]:!p[key]}));
+
+  if(groups.length===0) return <div className="card" style={{padding:24,textAlign:"center",color:"var(--t3)"}}>
+    Add <code style={{fontSize:11,background:"var(--sand)",padding:"1px 5px",borderRadius:3}}>program</code> and{" "}
+    <code style={{fontSize:11,background:"var(--sand)",padding:"1px 5px",borderRadius:3}}>milestone</code> columns to your Vendors sheet to see grouped spend.
+  </div>;
+
+  return <div style={{display:"flex",flexDirection:"column",gap:22}}>
+    {groups.map(({prog,entries})=>{
+      const progTotal=entries.reduce((s,{vendors:vs})=>s+vs.reduce((ss,v)=>ss+v.costExt,0),0);
+      const pLabel=progNames[prog]||(prog==="shared"?"Shared / Platform":prog);
+      const pColor=progColor[prog]||"var(--t2)";
+
+      return <div key={prog}>
+        {/* ── Program header ── */}
+        <div style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:10,
+          paddingBottom:8,borderBottom:`2px solid ${pColor}`}}>
+          <span style={{fontFamily:"'DM Serif Display',serif",fontStyle:"italic",
+            fontSize:16,color:"var(--t1)"}}>{pLabel}</span>
+          <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:13,
+            color:pColor,fontWeight:600}}>${(progTotal/1000).toFixed(1)}M</span>
+          <span style={{fontSize:11,color:"var(--t3)",marginLeft:"auto"}}>estimated external commitment</span>
+        </div>
+
+        {/* ── Milestone cards ── */}
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {entries.map(({ms,vendors:mvs})=>{
+            const msKey=`${prog}__${ms}`;
+            const isOpen=!!openMs[msKey];
+            const msTotal=mvs.reduce((s,v)=>s+v.costExt,0);
+            const msObj=MILESTONES.find(m=>m.name===ms);
+            const maxCost=Math.max(...mvs.map(v=>v.costExt),1);
+
+            return <div key={ms} className="card" style={{padding:0,overflow:"hidden"}}>
+              {/* ── Collapsed header (always visible, clickable) ── */}
+              <div onClick={()=>toggle(msKey)}
+                style={{display:"flex",alignItems:"center",gap:12,padding:"13px 18px",
+                  cursor:"pointer",userSelect:"none",
+                  background:isOpen?"var(--sand)":"var(--card)",
+                  transition:"background .12s"}}>
+                {/* Chevron */}
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"
+                  style={{flexShrink:0,transform:isOpen?"rotate(90deg)":"rotate(0deg)",
+                    transition:"transform .15s",color:"var(--t3)"}}>
+                  <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.5"
+                    strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                {/* Name + quarter */}
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontWeight:600,fontSize:13,color:"var(--t1)"}}>{ms}</span>
+                    {msObj&&<span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,
+                      color:"var(--t3)",background:"var(--border)",padding:"1px 6px",borderRadius:3}}>
+                      {msObj.quarter}</span>}
+                  </div>
+                  {/* Vendor name pills — collapsed summary */}
+                  {!isOpen&&<div style={{marginTop:4,display:"flex",gap:4,flexWrap:"wrap"}}>
+                    {mvs.map(v=>(
+                      <span key={v.id} style={{fontSize:11,color:"var(--t3)",
+                        background:"var(--sand)",padding:"1px 7px",borderRadius:10,
+                        border:"1px solid var(--border)"}}>{v.name}</span>
+                    ))}
+                  </div>}
+                </div>
+                {/* Rollup total */}
+                <div style={{textAlign:"right",flexShrink:0}}>
+                  <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:19,
+                    fontWeight:600,color:pColor,lineHeight:1}}>
+                    ${msTotal>=1000?(msTotal/1000).toFixed(1)+"M":msTotal+"K"}
+                  </div>
+                  <div style={{fontSize:10,color:"var(--t3)",marginTop:2}}>
+                    {mvs.length} vendor{mvs.length!==1?"s":""}
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Expanded breakdown ── */}
+              {isOpen&&<div style={{borderTop:"1px solid var(--border)",padding:"12px 18px 16px"}}>
+                <div style={{fontSize:10,fontWeight:600,textTransform:"uppercase",
+                  letterSpacing:"0.09em",color:"var(--t3)",marginBottom:10}}>Cost Breakdown</div>
+                <div style={{display:"flex",flexDirection:"column",gap:9}}>
+                  {mvs.slice().sort((a,b)=>b.costExt-a.costExt).map(v=>{
+                    const pct=msTotal>0?v.costExt/msTotal:0;
+                    const barPct=maxCost>0?v.costExt/maxCost:0;
+                    return <div key={v.id}>
+                      <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:4}}>
+                        <span style={{flex:1,fontSize:12.5,fontWeight:500,color:"var(--t1)",
+                          minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                          {v.name}</span>
+                        <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:12,
+                          color:pColor,fontWeight:600,flexShrink:0}}>${v.costExt}K</span>
+                        <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,
+                          color:"var(--t3)",flexShrink:0,minWidth:32,textAlign:"right"}}>
+                          {Math.round(pct*100)}%</span>
+                      </div>
+                      {/* Proportion bar */}
+                      <div style={{height:5,borderRadius:3,background:"var(--sand)",overflow:"hidden"}}>
+                        <div style={{height:"100%",borderRadius:3,background:pColor,
+                          width:`${barPct*100}%`,opacity:0.75,transition:"width .3s"}}/>
+                      </div>
+                    </div>;
+                  })}
+                </div>
+                {/* Total footer */}
+                <div style={{marginTop:12,paddingTop:10,borderTop:"1px solid var(--border)",
+                  display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
+                  <span style={{fontSize:11,color:"var(--t3)",fontWeight:600,
+                    textTransform:"uppercase",letterSpacing:"0.07em"}}>Total</span>
+                  <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:14,
+                    fontWeight:700,color:"var(--t1)"}}>
+                    ${msTotal>=1000?(msTotal/1000).toFixed(1)+"M":msTotal+"K"}
+                  </span>
+                </div>
+              </div>}
+            </div>;
+          })}
+        </div>
+      </div>;
+    })}
+  </div>;
+}
+
 /* ── VENDORS VIEW ── */
 function VendorsView(){
   const [catFilter,setCatFilter]=useState(null);
@@ -2081,71 +2206,7 @@ function VendorsView(){
     </div>}
 
     {/* ── INVESTOR MODE — rollup cards ── */}
-    {isInvestor&&<div style={{display:"flex",flexDirection:"column",gap:18}}>
-      {investorGroups.length===0&&<div className="card" style={{padding:24,textAlign:"center",color:"var(--t3)"}}>
-        Add <code style={{fontSize:11,background:"var(--sand)",padding:"1px 5px",borderRadius:3}}>program</code> and <code style={{fontSize:11,background:"var(--sand)",padding:"1px 5px",borderRadius:3}}>milestone</code> columns to your Vendors sheet to see grouped spend.
-      </div>}
-      {investorGroups.map(({prog,entries})=>{
-        const progTotal=entries.reduce((s,{vendors:vs})=>s+vs.reduce((ss,v)=>ss+v.costExt,0),0);
-        const progLabel=PROG_NAMES[prog]||(prog==="shared"?"Shared / Platform":prog);
-        const progColor=PROG_COLOR[prog]||"var(--t2)";
-        return <div key={prog}>
-          {/* Program header */}
-          <div style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:10,
-            paddingBottom:8,borderBottom:`2px solid ${progColor}`}}>
-            <span style={{fontFamily:"'DM Serif Display',serif",fontStyle:"italic",
-              fontSize:16,color:"var(--t1)"}}>{progLabel}</span>
-            <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:13,
-              color:progColor,fontWeight:600}}>${(progTotal/1000).toFixed(1)}M</span>
-            <span style={{fontSize:11,color:"var(--t3)",marginLeft:"auto"}}>
-              estimated external commitment
-            </span>
-          </div>
-          {/* Milestone cards */}
-          <div style={{display:"flex",flexDirection:"column",gap:10}}>
-            {entries.map(({ms,vendors:mvs})=>{
-              const msTotal=mvs.reduce((s,v)=>s+v.costExt,0);
-              const msObj=MILESTONES.find(m=>m.name===ms);
-              return <div key={ms} className="card" style={{padding:"14px 18px"}}>
-                <div style={{display:"flex",alignItems:"flex-start",gap:12}}>
-                  {/* Milestone label + quarter */}
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-                      <span style={{fontWeight:600,fontSize:13.5,color:"var(--t1)"}}>{ms}</span>
-                      {msObj&&<span style={{fontFamily:"'JetBrains Mono',monospace",
-                        fontSize:10,color:"var(--t3)",background:"var(--sand)",
-                        padding:"1px 6px",borderRadius:3}}>{msObj.quarter}</span>}
-                    </div>
-                    {/* Vendor chips */}
-                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                      {mvs.map(v=>(
-                        <div key={v.id} style={{display:"flex",alignItems:"center",gap:5,
-                          padding:"3px 9px",borderRadius:5,border:"1px solid var(--border)",
-                          background:"var(--sand)",fontSize:11.5}}>
-                          <span style={{fontWeight:500,color:"var(--t1)"}}>{v.name}</span>
-                          {v.costExt>0&&<span style={{fontFamily:"'JetBrains Mono',monospace",
-                            fontSize:10,color:"var(--t3)"}}>${v.costExt}K</span>}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  {/* Rollup total */}
-                  <div style={{textAlign:"right",flexShrink:0}}>
-                    <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:20,
-                      fontWeight:600,color:progColor,lineHeight:1}}>
-                      ${msTotal>=1000?(msTotal/1000).toFixed(1)+"M":msTotal+"K"}
-                    </div>
-                    <div style={{fontSize:10,color:"var(--t3)",marginTop:3}}>
-                      {mvs.length} vendor{mvs.length!==1?"s":""}
-                    </div>
-                  </div>
-                </div>
-              </div>;
-            })}
-          </div>
-        </div>;
-      })}
-    </div>}
+    {isInvestor&&<InvestorRollup groups={investorGroups} progNames={PROG_NAMES} progColor={PROG_COLOR}/>}
   </div>;
 }
 
@@ -2684,7 +2745,13 @@ function toVendors(rows){
   return rows.filter(r=>r.id).map(r=>({
     id:r.id,name:r.name,category:r.category,
     status:r.status||"not-started",
-    weeksLeft:r.weeksLeft===""?99:+r.weeksLeft,
+    weeksLeft:(()=>{
+      if(r.dueDate){
+        const diff=(new Date(r.dueDate)-new Date())/(7*24*3600*1000);
+        return Math.round(diff);
+      }
+      return 99; // shared/platform vendors with no due date
+    })(),
     risk:r.risk||"low",
     costExt:+r.costExt||0,
     payment:r.payment||"",
@@ -2695,11 +2762,11 @@ function toVendors(rows){
     milestone:r.milestone||"",
     program:r.program||"",
     deadline:(()=>{
-      if(r.dueDate)return r.dueDate; // prefer explicit sheet value
-      const wl=r.weeksLeft===""?99:+r.weeksLeft;
-      if(wl===99||wl<0)return "";
-      const d=new Date();d.setDate(d.getDate()+wl*7);
-      return d.toLocaleDateString("en-US",{month:"short",day:"numeric"});
+      if(!r.dueDate) return "";
+      try{
+        const d=new Date(r.dueDate);
+        return d.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
+      }catch(e){return r.dueDate;}
     })(),
   }));
 }
@@ -2789,18 +2856,18 @@ function toCapital(rows){
   // Supported keys (case-insensitive, trimmed):
   //   cashOnHand        numeric  e.g. 30.5  (in $M)
   //   monthlyBurn       numeric  e.g. 1.2   (in $M)
-  //   runwayMonths      numeric  e.g. 26
   //   totalRunway       numeric  e.g. 30    (months from seriesA to seriesB target)
   //   seriesAClose      string   e.g. "Sep 2026"
   //   seriesBTarget     string   e.g. "Q1 2028"
-  //   seriesBMonthsAway numeric  e.g. 16
   //   totalRaised       numeric  e.g. 42    (in $M)
   //   asOfLabel         string   e.g. "Sep 2026"  (display label for "As of" date)
   //   lastUpdated       string   e.g. "2026-09-01" (ISO date CFO last updated)
   //   proceeds_*        string   use of proceeds rows, e.g.:
   //                              key="proceeds_R&D", value="45" (percent)
-  const numKeys=["cashOnHand","monthlyBurn","runwayMonths","totalRunway",
-                 "seriesBMonthsAway","totalRaised"];
+  // Derived (not read from sheet):
+  //   runwayMonths      = cashOnHand / monthlyBurn
+  //   seriesBMonthsAway = months from today to (seriesAClose + totalRunway)
+  const numKeys=["cashOnHand","monthlyBurn","totalRunway","totalRaised"];
   const strKeys=["seriesAClose","seriesBTarget","asOfLabel","lastUpdated"];
   // Normalise a key: lowercase, strip ALL whitespace, underscores, and hyphens
   // so "cash_on_hand", "Cash On Hand", "cash-on-hand" all match "cashonhand"
@@ -2828,11 +2895,24 @@ function toCapital(rows){
     // unknown keys are silently ignored (may be CFO notes / extra columns)
   });
   // Warn about missing critical keys so misconfiguration is visible in console
-    const critKeys=["cashOnHand","monthlyBurn","runwayMonths"];  // seriesBTarget is display-only; omit from hard warning
+  const critKeys=["cashOnHand","monthlyBurn"];  // seriesBTarget, runwayMonths derived — omit from hard warning
   obj._missingKeys=critKeys.filter(k=>!obj[k]||obj[k]==="—");
   if(obj._missingKeys.length){
     console.warn("[YemaOps] Financials tab missing or zero for:",obj._missingKeys.join(", "),
       "— check key names in column A match the expected values.");
+  }
+  // Derive runwayMonths from cashOnHand / monthlyBurn
+  if(obj.monthlyBurn>0) obj.runwayMonths=Math.round(obj.cashOnHand/obj.monthlyBurn);
+  // Derive seriesBMonthsAway from seriesAClose + totalRunway
+  if(obj.seriesAClose&&obj.seriesAClose!=="—"&&obj.totalRunway>0){
+    try{
+      const base=new Date(obj.seriesAClose+" 1");
+      if(!isNaN(base)){
+        const seriesB=new Date(base);
+        seriesB.setMonth(seriesB.getMonth()+Math.round(obj.totalRunway));
+        obj.seriesBMonthsAway=Math.max(0,Math.round((seriesB-new Date())/(30.44*24*3600*1000)));
+      }
+    }catch(e){}
   }
   // derive asOfLabel from lastUpdated if not set
   if(!obj.asOfLabel && obj.lastUpdated){
