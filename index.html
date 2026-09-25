@@ -1,4 +1,4 @@
-<title>Yemaya Ops</title>
+<title>Yema Ops</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&family=JetBrains+Mono:wght@400;500&display=swap">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
@@ -685,7 +685,7 @@ function Sidebar({view,setView}){
     <div className="sb-logo">
       <LogoMark/>
       <div>
-        <div className="logo-name">Yemaya</div>
+        <div className="logo-name">Yema</div>
         <div className="logo-sub">Bio · Operations</div>
       </div>
     </div>
@@ -2713,7 +2713,7 @@ function toCapital(rows){
     const critKeys=["cashOnHand","monthlyBurn","runwayMonths"];  // seriesBTarget is display-only; omit from hard warning
   obj._missingKeys=critKeys.filter(k=>!obj[k]||obj[k]==="—");
   if(obj._missingKeys.length){
-    console.warn("[YemayaOps] Financials tab missing or zero for:",obj._missingKeys.join(", "),
+    console.warn("[YemaOps] Financials tab missing or zero for:",obj._missingKeys.join(", "),
       "— check key names in column A match the expected values.");
   }
   // derive asOfLabel from lastUpdated if not set
