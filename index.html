@@ -2111,35 +2111,32 @@ function VendorsView(){
       <div className="view-sub">{VENDORS.length} vendors · ${totalBudget}M total external budget</div>
     </div>
 
-    {/* ── Mode toggle + filters ── */}
-    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,flexWrap:"wrap"}}>
-      {/* View toggle */}
-      <div style={{display:"flex",alignItems:"center",gap:6}}>
-        <span style={{fontSize:10.5,color:"var(--t3)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.08em"}}>View</span>
-        {[["operator","Operator"],["investor","Investor"]].map(([v,l])=>(
-          <button key={v} className={`gantt-mode-btn${mode===v?" active":""}`}
-            onClick={()=>setMode(v)}>{l}</button>
-        ))}
-      </div>
-      {/* Category filters — operator mode only */}
-      {!isInvestor&&<>
-        <div style={{width:1,height:18,background:"var(--border)"}}/>
-        <button onClick={()=>setCatFilter(null)} style={{padding:"4px 12px",border:"1px solid var(--border)",
-          borderRadius:20,cursor:"pointer",background:!catFilter?"var(--current)":"var(--card)",
-          color:!catFilter?"#fff":"var(--t2)",fontSize:12,fontFamily:"inherit"}}>All</button>
-        {Object.keys(VC).map(c=>(
-          <button key={c} onClick={()=>setCatFilter(catFilter===c?null:c)}
-            style={{padding:"4px 12px",border:"1px solid var(--border)",borderRadius:20,cursor:"pointer",
-              background:catFilter===c?VC[c].color:"var(--card)",
-              color:catFilter===c?"#fff":"var(--t2)",fontSize:12,fontFamily:"inherit"}}>
-            {VC[c].label}
-          </button>
-        ))}
-      </>}
+    {/* ── Row 1: Mode toggle ── */}
+    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
+      <span style={{fontSize:10.5,color:"var(--t3)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.08em"}}>View</span>
+      {[["operator","Operator"],["investor","Investor"]].map(([v,l])=>(
+        <button key={v} className={`gantt-mode-btn${mode===v?" active":""}`}
+          onClick={()=>setMode(v)}>{l}</button>
+      ))}
       {isInvestor&&<span style={{marginLeft:"auto",fontSize:11,color:"var(--t3)"}}>
         External spend by program · milestone
       </span>}
     </div>
+
+    {/* ── Row 2: Category filters — operator mode only ── */}
+    {!isInvestor&&<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+      <button onClick={()=>setCatFilter(null)} style={{padding:"4px 12px",border:"1px solid var(--border)",
+        borderRadius:20,cursor:"pointer",background:!catFilter?"var(--current)":"var(--card)",
+        color:!catFilter?"#fff":"var(--t2)",fontSize:12,fontFamily:"inherit"}}>All</button>
+      {Object.keys(VC).map(c=>(
+        <button key={c} onClick={()=>setCatFilter(catFilter===c?null:c)}
+          style={{padding:"4px 12px",border:"1px solid var(--border)",borderRadius:20,cursor:"pointer",
+            background:catFilter===c?VC[c].color:"var(--card)",
+            color:catFilter===c?"#fff":"var(--t2)",fontSize:12,fontFamily:"inherit"}}>
+          {VC[c].label}
+        </button>
+      ))}
+    </div>}
 
     {/* ── OPERATOR MODE — detail table ── */}
     {!isInvestor&&<div className="card" style={{padding:0,overflow:"hidden"}}>
