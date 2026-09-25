@@ -670,7 +670,7 @@ function Owner({id}){
 
 /* ── SIDEBAR ── */
 function Sidebar({view,setView}){
-  const overdueVendors=VENDORS.filter(v=>v.weeksLeft<0&&v.status==="active");
+  const overdueVendors=VENDORS.filter(v=>v.weeksLeft<0&&!["complete","not-started"].includes(v.status));
   const atRiskCrit=PROGRAMS.flatMap(prog=>(getGantt(prog.id).tasks||[]).filter(t=>t.crit&&t.status==="at-risk"));
   const alertCount=overdueVendors.length+atRiskCrit.length;
   const nav=[
@@ -791,7 +791,7 @@ function HomeView({setView}){
 
   /* ── vendor buckets ── */
   const overdueVendors=VENDORS
-    .filter(v=>v.weeksLeft<0&&v.status==="active")
+    .filter(v=>v.weeksLeft<0&&!["complete","not-started"].includes(v.status))
     .sort((a,b)=>a.weeksLeft-b.weeksLeft);
   const upcomingVendors=VENDORS
     .filter(v=>!["contracted","complete"].includes(v.status)&&v.weeksLeft>=0&&v.weeksLeft<=10)
@@ -2681,7 +2681,7 @@ function CapitalView(){
 
 /* ── MOBILE TAB BAR ── */
 function MobileTabBar({view,setView}){
-  const overdueVendors=VENDORS.filter(v=>v.weeksLeft<0&&v.status==="active");
+  const overdueVendors=VENDORS.filter(v=>v.weeksLeft<0&&!["complete","not-started"].includes(v.status));
   const atRiskCrit=PROGRAMS.flatMap(prog=>(getGantt(prog.id).tasks||[]).filter(t=>t.crit&&t.status==="at-risk"));
   const alertCount=overdueVendors.length+atRiskCrit.length;
   const nav=[
